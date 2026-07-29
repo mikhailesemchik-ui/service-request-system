@@ -1,0 +1,36 @@
+# .NET
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+
+# User secrets and local environment files
+.env
+.env.*
+!.env.example
+
+# Angular / Node
+**/node_modules/
+**/.angular/
+**/dist/
+**/coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+
+# Test and browser artifacts
+TestResults/
+playwright-report/
+test-results/
+*.trx
+*.log
