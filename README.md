@@ -28,7 +28,6 @@ service-request-system/
 │   ├── ServiceRequest.UnitTests/       xUnit + Moq
 │   └── ServiceRequest.IntegrationTests/xUnit + WebApplicationFactory
 ├── service-request-client/             Angular 18 application
-├── CLAUDE.md
 └── README.md
 ```
 

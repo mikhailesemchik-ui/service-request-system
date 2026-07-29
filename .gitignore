@@ -34,3 +34,6 @@ playwright-report/
 test-results/
 *.trx
 *.log
+
+# Local Claude CLI instructions
+CLAUDE.md
