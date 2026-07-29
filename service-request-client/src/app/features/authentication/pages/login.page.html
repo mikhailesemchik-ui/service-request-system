@@ -1,0 +1,43 @@
+<main class="login-page">
+  <h1 class="login-page__title">Sign in</h1>
+
+  <form class="login-page__form" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <div class="field">
+      <label for="username">Username</label>
+      <input
+        id="username"
+        type="text"
+        formControlName="username"
+        autocomplete="username"
+        [attr.aria-invalid]="form.controls.username.invalid && form.controls.username.touched"
+        [attr.aria-describedby]="form.controls.username.invalid && form.controls.username.touched ? 'username-error' : null"
+      />
+      @if (form.controls.username.invalid && form.controls.username.touched) {
+        <p id="username-error" class="field__error">Username is required.</p>
+      }
+    </div>
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input
+        id="password"
+        type="password"
+        formControlName="password"
+        autocomplete="current-password"
+        [attr.aria-invalid]="form.controls.password.invalid && form.controls.password.touched"
+        [attr.aria-describedby]="form.controls.password.invalid && form.controls.password.touched ? 'password-error' : null"
+      />
+      @if (form.controls.password.invalid && form.controls.password.touched) {
+        <p id="password-error" class="field__error">Password is required.</p>
+      }
+    </div>
+
+    @if (errorMessage(); as message) {
+      <p class="login-page__error" role="alert">{{ message }}</p>
+    }
+
+    <button type="submit" [disabled]="isSubmitting()">
+      {{ isSubmitting() ? 'Signing in…' : 'Sign in' }}
+    </button>
+  </form>
+</main>

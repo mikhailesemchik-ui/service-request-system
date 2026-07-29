@@ -1,0 +1,6 @@
+<section class="dashboard-page">
+  @if (authService.currentUser(); as user) {
+    <h1>Welcome, {{ user.displayName }}</h1>
+    <p>Role: {{ user.role }}</p>
+  }
+</section>
