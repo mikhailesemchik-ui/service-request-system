@@ -1,0 +1,53 @@
+<section class="category-form" aria-labelledby="category-form-title">
+  <h2 id="category-form-title">{{ isEditMode() ? 'Edit category' : 'New category' }}</h2>
+
+  <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <div class="field">
+      <label for="category-name">Name</label>
+      <input
+        #nameInput
+        id="category-name"
+        type="text"
+        formControlName="name"
+        [attr.aria-invalid]="form.controls.name.invalid && form.controls.name.touched"
+        [attr.aria-describedby]="form.controls.name.invalid && form.controls.name.touched ? 'category-name-error' : null"
+      />
+      @if (form.controls.name.invalid && form.controls.name.touched) {
+        <p id="category-name-error" class="field__error">
+          @if (form.controls.name.errors?.['required']) {
+            Category name is required.
+          } @else {
+            Name must contain between 2 and 100 characters.
+          }
+        </p>
+      }
+    </div>
+
+    <div class="field">
+      <label for="category-description">Description</label>
+      <textarea
+        id="category-description"
+        formControlName="description"
+        rows="3"
+        [attr.aria-invalid]="form.controls.description.invalid && form.controls.description.touched"
+        [attr.aria-describedby]="form.controls.description.invalid && form.controls.description.touched ? 'category-description-error' : null"
+      ></textarea>
+      @if (form.controls.description.invalid && form.controls.description.touched) {
+        <p id="category-description-error" class="field__error">
+          Description must not exceed 500 characters.
+        </p>
+      }
+    </div>
+
+    @if (serverError(); as message) {
+      <p class="category-form__error" role="alert">{{ message }}</p>
+    }
+
+    <div class="category-form__actions">
+      <button type="button" (click)="close()" [disabled]="isSaving()">Cancel</button>
+      <button type="submit" [disabled]="isSaving()">
+        {{ isSaving() ? 'Saving…' : isEditMode() ? 'Save changes' : 'Create category' }}
+      </button>
+    </div>
+  </form>
+</section>

@@ -34,9 +34,10 @@ service-request-system/
 The backend currently implements request-category management and a JWT-based
 authentication/authorization foundation (login, current-user endpoint, role
 policies). The Angular client implements the corresponding authentication
-foundation (login, session restoration, route guards, authenticated shell).
-Request CRUD, comments, history, and category management UI are not yet
-implemented.
+foundation (login, session restoration, route guards, authenticated shell)
+and a category management UI (view for all authenticated roles; create,
+edit, and activate/deactivate for Admin). Request CRUD, comments, and
+history are not yet implemented.
 
 ## Prerequisites
 
@@ -181,9 +182,25 @@ With the API running (see above) and the Angular dev server started (`npm start`
 `http://localhost:4200/login` and sign in with one of the development accounts documented above
 (for example `employee` / `Employee123!`). A successful login redirects to `/dashboard`, which
 shows the signed-in user's display name and role; `Categories` is reachable from the top
-navigation (a placeholder page for now). The **Log out** button in the header clears the session
-and returns to `/login`. Visiting a protected route while signed out redirects to `/login` and
-returns you to the page you asked for once you sign in.
+navigation. The **Log out** button in the header clears the session and returns to `/login`.
+Visiting a protected route while signed out redirects to `/login` and returns you to the page
+you asked for once you sign in.
+
+### Categories
+
+The Categories page (`/categories`) is available to every authenticated role:
+
+- **Employee** and **SupportAgent** get a read-only view of active categories — no create, edit,
+  activate/deactivate, or "show inactive" controls are rendered for these roles.
+- **Admin** can additionally create categories, edit a category's name and description, toggle
+  whether inactive categories are included in the list, and deactivate or reactivate a category
+  (deactivation asks for inline confirmation first, since it affects future request creation).
+
+The Angular UI hides Admin-only controls for other roles purely for a clearer user experience —
+the API independently enforces the `RequireAdmin` policy on every write endpoint (`POST`, `PUT`,
+`PATCH /active-state`), so the frontend role check is not a security boundary. Category deletion
+is intentionally not implemented; categories are deactivated instead of removed so that request
+history referencing them remains meaningful.
 
 ### Session storage decision
 
@@ -235,8 +252,11 @@ npx ng test --watch=false
   and the current-user endpoint exist.
 - Request CRUD, comments, and history behavior are not implemented yet.
 - The Angular client implements login, session restoration, route guards,
-  and a minimal authenticated shell (Dashboard, Categories). Categories is a
-  placeholder page only — category management UI is not implemented yet.
+  a minimal authenticated shell (Dashboard, Categories), and category
+  management (view for all roles; create/edit/activate/deactivate for
+  Admin). There is no category search, sorting, pagination, or deletion —
+  the list is expected to stay small, and deactivation is used instead of
+  deletion so category history is preserved.
 - The access token is stored in `sessionStorage`, which is readable by any
   JavaScript on the page (see "Session storage decision" above). There is no
   refresh token, so a session simply ends when the token expires or the tab

@@ -1,4 +1,67 @@
 <section class="categories-page">
-  <h1>Categories</h1>
-  <p>Category management will be implemented in the next stage.</p>
+  <header class="categories-page__header">
+    <div>
+      <h1>Categories</h1>
+      <p class="categories-page__subtitle">
+        Categories describe the type of work a service request falls under.
+      </p>
+    </div>
+
+    @if (isAdmin()) {
+      <button type="button" (click)="openCreateForm()">New category</button>
+    }
+  </header>
+
+  <div class="categories-page__toolbar">
+    <span class="categories-page__count">
+      {{ categoryCount() }} {{ categoryCount() === 1 ? 'category' : 'categories' }}
+    </span>
+
+    @if (isAdmin()) {
+      <label class="categories-page__include-inactive">
+        <input type="checkbox" [checked]="includeInactive()" (change)="toggleIncludeInactive()" />
+        Show inactive categories
+      </label>
+    }
+  </div>
+
+  @if (banner(); as message) {
+    <p
+      class="banner"
+      [class.banner--error]="message.type === 'error'"
+      [attr.role]="message.type === 'error' ? 'alert' : 'status'"
+    >
+      <span>{{ message.text }}</span>
+      <button type="button" class="banner__dismiss" (click)="dismissBanner()">Dismiss</button>
+    </p>
+  }
+
+  @if (isFormOpen()) {
+    <app-category-form
+      [category]="editingCategory()"
+      [isSaving]="isSaving()"
+      [serverError]="formError()"
+      (save)="handleFormSave($event)"
+      (cancel)="closeForm()"
+    />
+  }
+
+  @if (isLoading()) {
+    <p class="categories-page__status">Loading categories…</p>
+  } @else if (loadError() !== null) {
+    <div class="categories-page__status" role="alert">
+      <p>{{ loadError() }}</p>
+      <button type="button" (click)="retryLoad()">Retry</button>
+    </div>
+  } @else if (categoryCount() === 0) {
+    <p class="categories-page__status">No categories to show yet.</p>
+  } @else {
+    <app-category-table
+      [categories]="categories()!"
+      [isAdmin]="isAdmin()"
+      [pendingActiveStateId]="pendingActiveStateId()"
+      (edit)="openEditForm($event)"
+      (activeStateChange)="handleActiveStateChange($event)"
+    />
+  }
 </section>

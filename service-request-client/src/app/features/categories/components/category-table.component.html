@@ -1,0 +1,56 @@
+<table class="category-table">
+  <thead>
+    <tr>
+      <th scope="col">Name</th>
+      <th scope="col">Description</th>
+      <th scope="col">Status</th>
+      <th scope="col">Updated</th>
+      @if (isAdmin()) {
+        <th scope="col">Actions</th>
+      }
+    </tr>
+  </thead>
+  <tbody>
+    @for (category of categories(); track trackByCategoryId($index, category)) {
+      <tr>
+        <td data-label="Name">{{ category.name }}</td>
+        <td data-label="Description">{{ category.description ?? 'No description' }}</td>
+        <td data-label="Status">
+          <span class="status" [class.status--inactive]="!category.isActive">
+            {{ category.isActive ? 'Active' : 'Inactive' }}
+          </span>
+        </td>
+        <td data-label="Updated">{{ category.updatedAt | date: 'mediumDate' }}</td>
+        @if (isAdmin()) {
+          <td data-label="Actions" class="category-table__actions">
+            <button type="button" (click)="edit.emit(category)">Edit</button>
+
+            @if (confirmingDeactivateId() === category.id) {
+              <span class="confirm" role="group" aria-label="Confirm deactivation">
+                <span class="confirm__text">
+                  Deactivate "{{ category.name }}"? It will no longer be available for new requests.
+                </span>
+                <button
+                  type="button"
+                  (click)="confirmDeactivate(category)"
+                  [disabled]="pendingActiveStateId() === category.id"
+                >
+                  Confirm
+                </button>
+                <button type="button" (click)="cancelDeactivate()">Cancel</button>
+              </span>
+            } @else {
+              <button
+                type="button"
+                (click)="onToggleClick(category)"
+                [disabled]="pendingActiveStateId() === category.id"
+              >
+                {{ category.isActive ? 'Deactivate' : 'Reactivate' }}
+              </button>
+            }
+          </td>
+        }
+      </tr>
+    }
+  </tbody>
+</table>
