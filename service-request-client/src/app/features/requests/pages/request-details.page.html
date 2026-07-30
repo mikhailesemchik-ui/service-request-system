@@ -1,0 +1,69 @@
+<section class="request-details-page">
+  <button type="button" class="request-details-page__back" (click)="backToList()">&larr; Back to requests</button>
+
+  @if (isLoading()) {
+    <p class="request-details-page__status">Loading request…</p>
+  } @else if (loadError() !== null) {
+    <div class="request-details-page__status" role="alert">
+      <p>{{ loadError() }}</p>
+      <button type="button" (click)="retryLoad()">Retry</button>
+    </div>
+  } @else if (request() !== null) {
+    @let details = request()!;
+    <article>
+      <h1>{{ details.title }}</h1>
+
+      <dl class="request-details-page__meta">
+        <div>
+          <dt>Status</dt>
+          <dd>{{ details.status }}</dd>
+        </div>
+        <div>
+          <dt>Priority</dt>
+          <dd>{{ details.priority }}</dd>
+        </div>
+        <div>
+          <dt>Category</dt>
+          <dd>{{ details.category.name }}</dd>
+        </div>
+        <div>
+          <dt>Created by</dt>
+          <dd>{{ details.createdBy.displayName }}</dd>
+        </div>
+        <div>
+          <dt>Assigned to</dt>
+          <dd>{{ details.assignedTo?.displayName ?? 'Unassigned' }}</dd>
+        </div>
+        <div>
+          <dt>Created</dt>
+          <dd>{{ details.createdAt | date: 'medium' }}</dd>
+        </div>
+        <div>
+          <dt>Updated</dt>
+          <dd>{{ details.updatedAt | date: 'medium' }}</dd>
+        </div>
+        @if (details.resolvedAt) {
+          <div>
+            <dt>Resolved</dt>
+            <dd>{{ details.resolvedAt | date: 'medium' }}</dd>
+          </div>
+        }
+        @if (details.closedAt) {
+          <div>
+            <dt>Closed</dt>
+            <dd>{{ details.closedAt | date: 'medium' }}</dd>
+          </div>
+        }
+        @if (details.cancelledAt) {
+          <div>
+            <dt>Cancelled</dt>
+            <dd>{{ details.cancelledAt | date: 'medium' }}</dd>
+          </div>
+        }
+      </dl>
+
+      <h2>Description</h2>
+      <p class="request-details-page__description">{{ details.description }}</p>
+    </article>
+  }
+</section>

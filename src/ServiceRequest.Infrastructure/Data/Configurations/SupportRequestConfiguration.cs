@@ -30,6 +30,15 @@ public sealed class SupportRequestConfiguration : IEntityTypeConfiguration<Suppo
             .HasMaxLength(50)
             .IsRequired();
 
+        // SQLite's EF Core provider refuses to translate ORDER BY on DateTimeOffset columns
+        // (it cannot guarantee correct ordering across mixed offsets). CreatedAt is always UTC
+        // (see SupportRequest constructor), so storing it as DateTime round-trips losslessly
+        // and lets the required "newest first" ordering run in the database.
+        builder.Property(request => request.CreatedAt)
+            .HasConversion(
+                toProvider => toProvider.UtcDateTime,
+                fromProvider => new DateTimeOffset(fromProvider, TimeSpan.Zero));
+
         builder.HasOne(request => request.Category)
             .WithMany()
             .HasForeignKey(request => request.CategoryId)

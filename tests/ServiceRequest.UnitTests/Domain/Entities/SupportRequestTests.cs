@@ -72,4 +72,52 @@ public class SupportRequestTests
         Assert.Same(creator, request.CreatedByUser);
         Assert.Null(request.AssignedToUser);
     }
+
+    [Fact]
+    public void Constructor_TrimsTitle()
+    {
+        var request = new SupportRequest("  Printer not working  ", "The office printer jams.", RequestPriority.High, CreateCategory(), CreateUser());
+
+        Assert.Equal("Printer not working", request.Title);
+    }
+
+    [Fact]
+    public void Constructor_TrimsDescription()
+    {
+        var request = new SupportRequest("Printer not working", "  The office printer jams.  ", RequestPriority.High, CreateCategory(), CreateUser());
+
+        Assert.Equal("The office printer jams.", request.Description);
+    }
+
+    [Fact]
+    public void Constructor_NewRequest_HasNoAssignee()
+    {
+        var request = new SupportRequest("Printer not working", "The office printer jams.", RequestPriority.High, CreateCategory(), CreateUser());
+
+        Assert.Null(request.AssignedToUser);
+        Assert.Null(request.AssignedToUserId);
+    }
+
+    [Fact]
+    public void Constructor_NewRequest_HasNullLifecycleTimestamps()
+    {
+        var request = new SupportRequest("Printer not working", "The office printer jams.", RequestPriority.High, CreateCategory(), CreateUser());
+
+        Assert.Null(request.ResolvedAt);
+        Assert.Null(request.ClosedAt);
+        Assert.Null(request.CancelledAt);
+    }
+
+    [Fact]
+    public void Constructor_NewRequest_SetsCreatedAtAndUpdatedAtToUtcNow()
+    {
+        var before = DateTimeOffset.UtcNow;
+
+        var request = new SupportRequest("Printer not working", "The office printer jams.", RequestPriority.High, CreateCategory(), CreateUser());
+
+        var after = DateTimeOffset.UtcNow;
+
+        Assert.InRange(request.CreatedAt, before, after);
+        Assert.Equal(request.CreatedAt, request.UpdatedAt);
+    }
 }

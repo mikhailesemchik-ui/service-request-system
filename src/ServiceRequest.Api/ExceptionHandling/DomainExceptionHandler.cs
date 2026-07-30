@@ -22,6 +22,9 @@ public sealed class DomainExceptionHandler : IExceptionHandler
             RequestCategoryNotFoundException => ((int?)StatusCodes.Status404NotFound, "Category not found"),
             DuplicateRequestCategoryNameException => ((int?)StatusCodes.Status409Conflict, "Duplicate category name"),
             InvalidCredentialsException => ((int?)StatusCodes.Status401Unauthorized, "Invalid credentials"),
+            SupportRequestNotFoundException => ((int?)StatusCodes.Status404NotFound, "Request not found"),
+            RequestCategoryInactiveException => ((int?)StatusCodes.Status409Conflict, "Category is not active"),
+            CurrentUserUnavailableException => ((int?)StatusCodes.Status401Unauthorized, "Current user unavailable"),
             _ => (null, null),
         };
 

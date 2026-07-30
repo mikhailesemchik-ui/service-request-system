@@ -1,0 +1,94 @@
+<section class="create-request-page">
+  <h1>New request</h1>
+  <p class="create-request-page__subtitle">Describe the issue so a support agent can help.</p>
+
+  @if (categoriesError(); as message) {
+    <div class="create-request-page__status" role="alert">
+      <p>{{ message }}</p>
+      <button type="button" (click)="retryLoadCategories()">Retry</button>
+    </div>
+  } @else {
+    <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+      <div class="field">
+        <label for="request-title">Title</label>
+        <input
+          id="request-title"
+          type="text"
+          formControlName="title"
+          [attr.aria-invalid]="form.controls.title.invalid && form.controls.title.touched"
+          [attr.aria-describedby]="form.controls.title.invalid && form.controls.title.touched ? 'request-title-error' : null"
+        />
+        @if (form.controls.title.invalid && form.controls.title.touched) {
+          <p id="request-title-error" class="field__error">
+            @if (form.controls.title.errors?.['required']) {
+              Title is required.
+            } @else {
+              Title must contain between 3 and 200 characters.
+            }
+          </p>
+        }
+      </div>
+
+      <div class="field">
+        <label for="request-description">Description</label>
+        <textarea
+          id="request-description"
+          formControlName="description"
+          rows="5"
+          [attr.aria-invalid]="form.controls.description.invalid && form.controls.description.touched"
+          [attr.aria-describedby]="
+            form.controls.description.invalid && form.controls.description.touched ? 'request-description-error' : null
+          "
+        ></textarea>
+        @if (form.controls.description.invalid && form.controls.description.touched) {
+          <p id="request-description-error" class="field__error">
+            @if (form.controls.description.errors?.['required']) {
+              Description is required.
+            } @else {
+              Description must contain between 10 and 4000 characters.
+            }
+          </p>
+        }
+      </div>
+
+      <div class="field">
+        <label for="request-category">Category</label>
+        <select
+          id="request-category"
+          formControlName="categoryId"
+          [attr.aria-invalid]="form.controls.categoryId.touched && form.controls.categoryId.value === null"
+        >
+          <option [ngValue]="null">
+            {{ categories() === null ? 'Loading categories…' : 'Select a category' }}
+          </option>
+          @for (category of categories(); track category.id) {
+            <option [ngValue]="category.id">{{ category.name }}</option>
+          }
+        </select>
+        @if (form.controls.categoryId.touched && form.controls.categoryId.value === null) {
+          <p class="field__error">Category is required.</p>
+        }
+      </div>
+
+      <div class="field">
+        <label for="request-priority">Priority</label>
+        <select id="request-priority" formControlName="priority">
+          @for (priorityOption of priorities; track priorityOption) {
+            <option [value]="priorityOption">{{ priorityOption }}</option>
+          }
+        </select>
+      </div>
+
+      @if (serverError(); as message) {
+        <p class="create-request-page__error" role="alert">{{ message }}</p>
+      }
+
+      <div class="create-request-page__actions">
+        <button type="button" (click)="cancel()" [disabled]="isSaving()">Cancel</button>
+        <button type="submit" [disabled]="isSaving() || categories() === null">
+          {{ isSaving() ? 'Creating…' : 'Create request' }}
+        </button>
+      </div>
+    </form>
+  }
+</section>

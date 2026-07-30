@@ -1,0 +1,36 @@
+<table class="request-table">
+  <thead>
+    <tr>
+      <th scope="col">ID</th>
+      <th scope="col">Title</th>
+      <th scope="col">Status</th>
+      <th scope="col">Priority</th>
+      <th scope="col">Category</th>
+      <th scope="col">Created by</th>
+      <th scope="col">Assigned to</th>
+      <th scope="col">Created</th>
+      <th scope="col">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (request of requests(); track trackByRequestId($index, request)) {
+      <tr>
+        <td data-label="ID">{{ request.id }}</td>
+        <td data-label="Title">{{ request.title }}</td>
+        <td data-label="Status">
+          <span class="status">{{ request.status }}</span>
+        </td>
+        <td data-label="Priority">
+          <span class="priority" [class]="'priority--' + request.priority.toLowerCase()">{{ request.priority }}</span>
+        </td>
+        <td data-label="Category">{{ request.category.name }}</td>
+        <td data-label="Created by">{{ request.createdBy.displayName }}</td>
+        <td data-label="Assigned to">{{ request.assignedTo?.displayName ?? 'Unassigned' }}</td>
+        <td data-label="Created">{{ request.createdAt | date: 'medium' }}</td>
+        <td data-label="Actions">
+          <button type="button" (click)="open.emit(request)">View</button>
+        </td>
+      </tr>
+    }
+  </tbody>
+</table>

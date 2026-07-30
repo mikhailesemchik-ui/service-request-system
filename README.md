@@ -31,13 +31,14 @@ service-request-system/
 └── README.md
 ```
 
-The backend currently implements request-category management and a JWT-based
-authentication/authorization foundation (login, current-user endpoint, role
-policies). The Angular client implements the corresponding authentication
-foundation (login, session restoration, route guards, authenticated shell)
-and a category management UI (view for all authenticated roles; create,
-edit, and activate/deactivate for Admin). Request CRUD, comments, and
-history are not yet implemented.
+The backend implements request-category management, service request creation and
+retrieval, and a JWT-based authentication/authorization foundation (login,
+current-user endpoint, role policies). The Angular client implements the
+corresponding authentication foundation (login, session restoration, route
+guards, authenticated shell), a category management UI (view for all
+authenticated roles; create, edit, and activate/deactivate for Admin), and a
+service requests UI (list, create, details). Assignment, comments, status
+changes, and request history are not yet implemented.
 
 ## Prerequisites
 
@@ -181,8 +182,9 @@ npm run build
 With the API running (see above) and the Angular dev server started (`npm start`), open
 `http://localhost:4200/login` and sign in with one of the development accounts documented above
 (for example `employee` / `Employee123!`). A successful login redirects to `/dashboard`, which
-shows the signed-in user's display name and role; `Categories` is reachable from the top
-navigation. The **Log out** button in the header clears the session and returns to `/login`.
+shows the signed-in user's display name and role; `Categories` and `Requests` are reachable
+from the top navigation. The **Log out** button in the header clears the session and returns
+to `/login`.
 Visiting a protected route while signed out redirects to `/login` and returns you to the page
 you asked for once you sign in.
 
@@ -201,6 +203,27 @@ the API independently enforces the `RequireAdmin` policy on every write endpoint
 `PATCH /active-state`), so the frontend role check is not a security boundary. Category deletion
 is intentionally not implemented; categories are deactivated instead of removed so that request
 history referencing them remains meaningful.
+
+### Service requests
+
+The Requests section (`/requests`, `/requests/new`, `/requests/:requestId`) is available to
+every authenticated role, with the visible scope determined entirely by the backend:
+
+- **Employee**: the list ("My requests") and details pages only ever show requests the
+  employee created; requesting another user's request by ID returns the same "not found"
+  response as a request that does not exist, so the UI cannot distinguish "missing" from
+  "not yours".
+- **SupportAgent** and **Admin**: the list ("All requests") and details pages show every
+  request regardless of creator.
+- All three roles can create a request for themselves — the creator, status (`New`), and
+  assignee (`Unassigned`) are always set by the server and can never be supplied by the
+  client.
+
+This is enforced server-side (`GET /api/requests`, `GET /api/requests/{id}`,
+`POST /api/requests`), not just hidden in the UI. Category selection when creating a request
+is restricted to active categories only. Assignment, status changes, comments, and request
+history are out of scope for this first version — a request can currently only be created
+and viewed.
 
 ### Session storage decision
 
@@ -250,13 +273,19 @@ npx ng test --watch=false
 - Registration, refresh tokens, token renewal, password reset, email
   verification, and user-management CRUD are not implemented — only login
   and the current-user endpoint exist.
-- Request CRUD, comments, and history behavior are not implemented yet.
+- Requests can be created and viewed only. There is no assignment, no status
+  changes (a request stays `New` forever in this version), no comments, no
+  request history, no editing, and no deletion.
+- Request attachments are not implemented.
 - The Angular client implements login, session restoration, route guards,
-  a minimal authenticated shell (Dashboard, Categories), and category
+  a minimal authenticated shell (Dashboard, Categories, Requests), category
   management (view for all roles; create/edit/activate/deactivate for
-  Admin). There is no category search, sorting, pagination, or deletion —
-  the list is expected to stay small, and deactivation is used instead of
-  deletion so category history is preserved.
+  Admin), and service requests (list with filters/pagination, create,
+  details — view for all roles, scoped to own requests for Employee).
+  There is no category search, sorting, pagination, or deletion — the list
+  is expected to stay small, and deactivation is used instead of deletion
+  so category history is preserved. Request search and sorting controls are
+  also not implemented.
 - The access token is stored in `sessionStorage`, which is readable by any
   JavaScript on the page (see "Session storage decision" above). There is no
   refresh token, so a session simply ends when the token expires or the tab

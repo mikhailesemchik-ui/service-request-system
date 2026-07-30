@@ -63,6 +63,26 @@ public sealed class ApplicationDbContextTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAndLoad_RoundTripsCreatedAtAsUtcWithoutLoss()
+    {
+        var category = new RequestCategory("Hardware");
+        var creator = new ApplicationUser("jane.doe", "Jane Doe", "jane.doe@example.com", UserRole.Employee);
+        _dbContext.RequestCategories.Add(category);
+        _dbContext.Users.Add(creator);
+        await _dbContext.SaveChangesAsync();
+
+        var request = new SupportRequest("Printer not working", "The office printer jams.", RequestPriority.High, category, creator);
+        _dbContext.SupportRequests.Add(request);
+        await _dbContext.SaveChangesAsync();
+
+        using var verifyContext = CreateContext();
+        var loaded = await verifyContext.SupportRequests.SingleAsync(r => r.Id == request.Id);
+
+        Assert.Equal(request.CreatedAt, loaded.CreatedAt);
+        Assert.Equal(TimeSpan.Zero, loaded.CreatedAt.Offset);
+    }
+
+    [Fact]
     public async Task SaveAndLoad_WhenRequestHasNoAssignee_AllowsNullAssignee()
     {
         var category = new RequestCategory("Hardware");

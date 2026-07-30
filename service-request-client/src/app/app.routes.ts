@@ -28,6 +28,24 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/categories/pages/categories.page').then((m) => m.CategoriesPageComponent),
       },
+      {
+        path: 'requests',
+        title: 'Requests',
+        loadComponent: () =>
+          import('./features/requests/pages/requests-list.page').then((m) => m.RequestsListPageComponent),
+      },
+      {
+        path: 'requests/new',
+        title: 'New request',
+        loadComponent: () =>
+          import('./features/requests/pages/create-request.page').then((m) => m.CreateRequestPageComponent),
+      },
+      {
+        path: 'requests/:requestId',
+        title: 'Request details',
+        loadComponent: () =>
+          import('./features/requests/pages/request-details.page').then((m) => m.RequestDetailsPageComponent),
+      },
     ],
   },
   { path: '**', redirectTo: '' },

@@ -1,0 +1,70 @@
+<section class="requests-page">
+  <header class="requests-page__header">
+    <div>
+      <h1>{{ heading() }}</h1>
+      <p class="requests-page__subtitle">Track service requests and their current status.</p>
+    </div>
+
+    <button type="button" (click)="createRequest()">New request</button>
+  </header>
+
+  <div class="requests-page__filters">
+    <div class="filter">
+      <label for="status-filter">Status</label>
+      <select id="status-filter" [value]="status()" (change)="onStatusChange($any($event.target).value)">
+        <option value="">All statuses</option>
+        @for (statusOption of statuses; track statusOption) {
+          <option [value]="statusOption">{{ statusOption }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="filter">
+      <label for="priority-filter">Priority</label>
+      <select id="priority-filter" [value]="priority()" (change)="onPriorityChange($any($event.target).value)">
+        <option value="">All priorities</option>
+        @for (priorityOption of priorities; track priorityOption) {
+          <option [value]="priorityOption">{{ priorityOption }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="filter">
+      <label for="category-filter">Category</label>
+      <select id="category-filter" [value]="categoryId()" (change)="onCategoryChange($any($event.target).value)">
+        <option value="">All categories</option>
+        @for (category of categories(); track category.id) {
+          <option [value]="category.id">{{ category.name }}</option>
+        }
+      </select>
+    </div>
+  </div>
+
+  @if (isLoading()) {
+    <p class="requests-page__status">Loading requests…</p>
+  } @else if (loadError() !== null) {
+    <div class="requests-page__status" role="alert">
+      <p>{{ loadError() }}</p>
+      <button type="button" (click)="retryLoad()">Retry</button>
+    </div>
+  } @else if ((result()?.items?.length ?? 0) === 0) {
+    <p class="requests-page__status">No requests to show yet.</p>
+  } @else {
+    <app-request-table [requests]="result()!.items" (open)="openDetails($event)" />
+
+    <nav class="requests-page__pagination" aria-label="Requests pagination">
+      <button type="button" (click)="goToPreviousPage()" [disabled]="page() <= 1" aria-label="Go to previous page">
+        Previous
+      </button>
+      <span>Page {{ result()!.page }} of {{ result()!.totalPages || 1 }}</span>
+      <button
+        type="button"
+        (click)="goToNextPage()"
+        [disabled]="page() >= (result()!.totalPages || 1)"
+        aria-label="Go to next page"
+      >
+        Next
+      </button>
+    </nav>
+  }
+</section>

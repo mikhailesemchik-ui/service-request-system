@@ -47,21 +47,11 @@ public sealed class SupportRequest
         RequestCategory category,
         ApplicationUser createdByUser)
     {
-        if (string.IsNullOrWhiteSpace(title))
-        {
-            throw new ArgumentException("Request title cannot be blank.", nameof(title));
-        }
-
-        if (string.IsNullOrWhiteSpace(description))
-        {
-            throw new ArgumentException("Request description cannot be blank.", nameof(description));
-        }
-
         ArgumentNullException.ThrowIfNull(category);
         ArgumentNullException.ThrowIfNull(createdByUser);
 
-        Title = title;
-        Description = description;
+        Title = NormalizeRequiredText(title, "Request title cannot be blank.", nameof(title));
+        Description = NormalizeRequiredText(description, "Request description cannot be blank.", nameof(description));
         Status = RequestStatus.New;
         Priority = priority;
         Category = category;
@@ -72,5 +62,17 @@ public sealed class SupportRequest
         var now = DateTimeOffset.UtcNow;
         CreatedAt = now;
         UpdatedAt = now;
+    }
+
+    private static string NormalizeRequiredText(string value, string errorMessage, string paramName)
+    {
+        var trimmed = value?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            throw new ArgumentException(errorMessage, paramName);
+        }
+
+        return trimmed;
     }
 }
