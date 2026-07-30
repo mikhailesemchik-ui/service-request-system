@@ -22,6 +22,8 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>
     public const string AdminPassword = "TestAdmin123!";
     public const string SupportAgentUsername = "test-agent";
     public const string SupportAgentPassword = "TestAgent123!";
+    public const string SecondSupportAgentUsername = "test-agent-two";
+    public const string SecondSupportAgentPassword = "TestAgentTwo123!";
     public const string EmployeeUsername = "test-employee";
     public const string EmployeePassword = "TestEmployee123!";
     public const string InactiveUsername = "test-inactive";
@@ -71,6 +73,7 @@ public sealed class ApiTestFactory : WebApplicationFactory<Program>
             var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<ApplicationUser>>();
             SeedTestUser(dbContext, passwordHasher, AdminUsername, "Test Admin", "test-admin@example.test", UserRole.Admin, AdminPassword, isActive: true);
             SeedTestUser(dbContext, passwordHasher, SupportAgentUsername, "Test Support Agent", "test-agent@example.test", UserRole.SupportAgent, SupportAgentPassword, isActive: true);
+            SeedTestUser(dbContext, passwordHasher, SecondSupportAgentUsername, "Test Support Agent Two", "test-agent-two@example.test", UserRole.SupportAgent, SecondSupportAgentPassword, isActive: true);
             SeedTestUser(dbContext, passwordHasher, EmployeeUsername, "Test Employee", "test-employee@example.test", UserRole.Employee, EmployeePassword, isActive: true);
             SeedTestUser(dbContext, passwordHasher, InactiveUsername, "Test Inactive User", "test-inactive@example.test", UserRole.Employee, InactivePassword, isActive: false);
             dbContext.SaveChanges();

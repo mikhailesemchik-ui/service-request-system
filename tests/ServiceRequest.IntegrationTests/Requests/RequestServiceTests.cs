@@ -367,4 +367,726 @@ public sealed class RequestServiceTests : IDisposable
 
         Assert.Equal([third.Id, second.Id, first.Id], result.Items.Select(item => item.Id));
     }
+
+    // Assignment
+
+    private async Task PreAssignAsync(SupportRequest request, ApplicationUser assignee)
+    {
+        request.AssignTo(assignee);
+        await _dbContext.SaveChangesAsync();
+    }
+
+    private async Task PreChangeStatusAsync(SupportRequest request, RequestStatus status)
+    {
+        request.ChangeStatus(status);
+        await _dbContext.SaveChangesAsync();
+    }
+
+    private async Task<int> CountHistoryAsync(int requestId)
+    {
+        await using var verifyContext = CreateContext();
+        return await verifyContext.RequestHistory.CountAsync(h => h.ServiceRequestId == requestId);
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_WhenEmployee_ThrowsRequestManagementForbiddenException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+
+        await Assert.ThrowsAsync<RequestManagementForbiddenException>(() => _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = agent.Id }, ToCurrentUser(employee), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_SupportAgentAssignsUnassignedRequestToSelf_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, creator);
+
+        var details = await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = agent.Id }, ToCurrentUser(agent), CancellationToken.None);
+
+        Assert.Equal(agent.Id, details.AssignedTo?.Id);
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_SupportAgentAssignsToAnotherUser_ThrowsRequestManagementForbiddenException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var otherAgent = await CreateUserAsync("agent.jones", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, creator);
+
+        await Assert.ThrowsAsync<RequestManagementForbiddenException>(() => _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = otherAgent.Id }, ToCurrentUser(agent), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_SupportAgentTriesToTakeOverAnotherAgentsRequest_ThrowsRequestManagementForbiddenException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var firstAgent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var secondAgent = await CreateUserAsync("agent.jones", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, creator);
+        await PreAssignAsync(request, firstAgent);
+
+        await Assert.ThrowsAsync<RequestManagementForbiddenException>(() => _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = secondAgent.Id }, ToCurrentUser(secondAgent), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_SupportAgentRemovesOwnAssignment_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, creator);
+        await PreAssignAsync(request, agent);
+
+        var details = await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = null }, ToCurrentUser(agent), CancellationToken.None);
+
+        Assert.Null(details.AssignedTo);
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_SupportAgentTriesToRemoveAnotherUsersAssignment_ThrowsRequestManagementForbiddenException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var firstAgent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var secondAgent = await CreateUserAsync("agent.jones", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, creator);
+        await PreAssignAsync(request, firstAgent);
+
+        await Assert.ThrowsAsync<RequestManagementForbiddenException>(() => _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = null }, ToCurrentUser(secondAgent), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_AdminAssignsToSupportAgent_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, creator);
+
+        var details = await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = agent.Id }, ToCurrentUser(admin), CancellationToken.None);
+
+        Assert.Equal(agent.Id, details.AssignedTo?.Id);
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_AdminAssignsToAdmin_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var otherAdmin = await CreateUserAsync("second.admin", UserRole.Admin);
+        var request = await CreateRequestAsync(category, creator);
+
+        var details = await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = otherAdmin.Id }, ToCurrentUser(admin), CancellationToken.None);
+
+        Assert.Equal(otherAdmin.Id, details.AssignedTo?.Id);
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_AdminAssignsToEmployee_ThrowsInvalidRequestAssigneeException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var otherEmployee = await CreateUserAsync("john.doe", UserRole.Employee);
+        var request = await CreateRequestAsync(category, creator);
+
+        await Assert.ThrowsAsync<InvalidRequestAssigneeException>(() => _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = otherEmployee.Id }, ToCurrentUser(admin), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_AdminAssignsToInactiveSupportAgent_ThrowsInvalidRequestAssigneeException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var inactiveAgent = await CreateUserAsync("agent.smith", UserRole.SupportAgent, isActive: false);
+        var request = await CreateRequestAsync(category, creator);
+
+        await Assert.ThrowsAsync<InvalidRequestAssigneeException>(() => _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = inactiveAgent.Id }, ToCurrentUser(admin), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_AdminReassigns_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var firstAgent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var secondAgent = await CreateUserAsync("agent.jones", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, creator);
+        await PreAssignAsync(request, firstAgent);
+
+        var details = await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = secondAgent.Id }, ToCurrentUser(admin), CancellationToken.None);
+
+        Assert.Equal(secondAgent.Id, details.AssignedTo?.Id);
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_AdminRemovesAssignment_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, creator);
+        await PreAssignAsync(request, agent);
+
+        var details = await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = null }, ToCurrentUser(admin), CancellationToken.None);
+
+        Assert.Null(details.AssignedTo);
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_WhenRequestIsClosed_ThrowsInvalidRequestAssigneeException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var otherAgent = await CreateUserAsync("agent.jones", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, creator);
+        await PreAssignAsync(request, agent);
+        await PreChangeStatusAsync(request, RequestStatus.InProgress);
+        await PreChangeStatusAsync(request, RequestStatus.Resolved);
+        await PreChangeStatusAsync(request, RequestStatus.Closed);
+
+        await Assert.ThrowsAsync<InvalidRequestAssigneeException>(() => _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = otherAgent.Id }, ToCurrentUser(admin), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_WhenRequestIsCancelled_ThrowsInvalidRequestAssigneeException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, creator);
+        await PreChangeStatusAsync(request, RequestStatus.Cancelled);
+
+        await Assert.ThrowsAsync<InvalidRequestAssigneeException>(() => _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = agent.Id }, ToCurrentUser(admin), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_IdempotentSameAssignment_CreatesNoDuplicateHistory()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var creator = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, creator);
+
+        await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = agent.Id }, ToCurrentUser(admin), CancellationToken.None);
+        await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = agent.Id }, ToCurrentUser(admin), CancellationToken.None);
+
+        Assert.Equal(1, await CountHistoryAsync(request.Id));
+    }
+
+    // Status transitions
+
+    [Fact]
+    public async Task ChangeStatusAsync_EmployeeCancelsOwnNewRequest_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var request = await CreateRequestAsync(category, employee);
+
+        var details = await _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.Cancelled }, ToCurrentUser(employee), CancellationToken.None);
+
+        Assert.Equal(RequestStatus.Cancelled, details.Status);
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_EmployeeCancelsOwnInProgressRequest_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+        await PreAssignAsync(request, agent);
+        await PreChangeStatusAsync(request, RequestStatus.InProgress);
+
+        var details = await _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.Cancelled }, ToCurrentUser(employee), CancellationToken.None);
+
+        Assert.Equal(RequestStatus.Cancelled, details.Status);
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_EmployeeClosesOwnResolvedRequest_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+        await PreAssignAsync(request, agent);
+        await PreChangeStatusAsync(request, RequestStatus.InProgress);
+        await PreChangeStatusAsync(request, RequestStatus.Resolved);
+
+        var details = await _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.Closed }, ToCurrentUser(employee), CancellationToken.None);
+
+        Assert.Equal(RequestStatus.Closed, details.Status);
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_EmployeeCannotResolve_ThrowsRequestManagementForbiddenException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+        await PreAssignAsync(request, agent);
+        await PreChangeStatusAsync(request, RequestStatus.InProgress);
+
+        await Assert.ThrowsAsync<RequestManagementForbiddenException>(() => _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.Resolved }, ToCurrentUser(employee), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_EmployeeCannotCloseNewRequest_ThrowsInvalidRequestStatusTransitionException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var request = await CreateRequestAsync(category, employee);
+
+        await Assert.ThrowsAsync<InvalidRequestStatusTransitionException>(() => _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.Closed }, ToCurrentUser(employee), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_EmployeeCannotChangeAnotherUsersRequest_ThrowsSupportRequestNotFoundException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var owner = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var otherEmployee = await CreateUserAsync("john.doe", UserRole.Employee);
+        var request = await CreateRequestAsync(category, owner);
+
+        await Assert.ThrowsAsync<SupportRequestNotFoundException>(() => _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.Cancelled }, ToCurrentUser(otherEmployee), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_SupportAgentChangesAssignedRequestToInProgress_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+        await PreAssignAsync(request, agent);
+
+        var details = await _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.InProgress }, ToCurrentUser(agent), CancellationToken.None);
+
+        Assert.Equal(RequestStatus.InProgress, details.Status);
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_SupportAgentCannotChangeUnassignedRequest_ThrowsRequestManagementForbiddenException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+
+        await Assert.ThrowsAsync<RequestManagementForbiddenException>(() => _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.InProgress }, ToCurrentUser(agent), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_SupportAgentCannotChangeAnotherAgentsRequest_ThrowsRequestManagementForbiddenException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var firstAgent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var secondAgent = await CreateUserAsync("agent.jones", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+        await PreAssignAsync(request, firstAgent);
+
+        await Assert.ThrowsAsync<RequestManagementForbiddenException>(() => _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.InProgress }, ToCurrentUser(secondAgent), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_SupportAgentResolvesAssignedRequest_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+        await PreAssignAsync(request, agent);
+        await PreChangeStatusAsync(request, RequestStatus.InProgress);
+
+        var details = await _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.Resolved }, ToCurrentUser(agent), CancellationToken.None);
+
+        Assert.Equal(RequestStatus.Resolved, details.Status);
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_SupportAgentReopensResolvedRequest_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+        await PreAssignAsync(request, agent);
+        await PreChangeStatusAsync(request, RequestStatus.InProgress);
+        await PreChangeStatusAsync(request, RequestStatus.Resolved);
+
+        var details = await _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.InProgress }, ToCurrentUser(agent), CancellationToken.None);
+
+        Assert.Equal(RequestStatus.InProgress, details.Status);
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_SupportAgentCannotClose_ThrowsRequestManagementForbiddenException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+        await PreAssignAsync(request, agent);
+        await PreChangeStatusAsync(request, RequestStatus.InProgress);
+        await PreChangeStatusAsync(request, RequestStatus.Resolved);
+
+        await Assert.ThrowsAsync<RequestManagementForbiddenException>(() => _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.Closed }, ToCurrentUser(agent), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_AdminPerformsEveryValidTransitionAlongTheFullLifecycle_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+        await PreAssignAsync(request, agent);
+        var currentUser = ToCurrentUser(admin);
+
+        async Task<RequestStatus> ChangeAsync(RequestStatus status)
+        {
+            var details = await _sut.ChangeStatusAsync(
+                request.Id, new UpdateRequestStatusRequest { Status = status }, currentUser, CancellationToken.None);
+            return details.Status;
+        }
+
+        Assert.Equal(RequestStatus.InProgress, await ChangeAsync(RequestStatus.InProgress));
+        Assert.Equal(RequestStatus.WaitingForUser, await ChangeAsync(RequestStatus.WaitingForUser));
+        Assert.Equal(RequestStatus.InProgress, await ChangeAsync(RequestStatus.InProgress));
+        Assert.Equal(RequestStatus.Resolved, await ChangeAsync(RequestStatus.Resolved));
+        Assert.Equal(RequestStatus.Closed, await ChangeAsync(RequestStatus.Closed));
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_AdminCancelsInProgressRequest_Succeeds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+        await PreAssignAsync(request, agent);
+        await PreChangeStatusAsync(request, RequestStatus.InProgress);
+
+        var details = await _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.Cancelled }, ToCurrentUser(admin), CancellationToken.None);
+
+        Assert.Equal(RequestStatus.Cancelled, details.Status);
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_AdminCannotPerformInvalidTransition_ThrowsInvalidRequestStatusTransitionException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var request = await CreateRequestAsync(category, employee);
+
+        await Assert.ThrowsAsync<InvalidRequestStatusTransitionException>(() => _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.Resolved }, ToCurrentUser(admin), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_ToInProgressWithoutAssignee_ThrowsInvalidRequestStatusTransitionException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var request = await CreateRequestAsync(category, employee);
+
+        await Assert.ThrowsAsync<InvalidRequestStatusTransitionException>(() => _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.InProgress }, ToCurrentUser(admin), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ChangeStatusAsync_SameStatus_CreatesNoHistory()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var request = await CreateRequestAsync(category, employee);
+
+        await _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.New }, ToCurrentUser(employee), CancellationToken.None);
+
+        Assert.Equal(0, await CountHistoryAsync(request.Id));
+    }
+
+    // History
+
+    [Fact]
+    public async Task GetHistoryAsync_AssignmentChange_PersistsHistoryEntry()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+
+        await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = agent.Id }, ToCurrentUser(admin), CancellationToken.None);
+
+        var history = await _sut.GetHistoryAsync(request.Id, ToCurrentUser(admin), CancellationToken.None);
+
+        var entry = Assert.Single(history);
+        Assert.Equal(RequestHistoryActions.AssignmentChanged, entry.Action);
+        Assert.Null(entry.PreviousValue);
+        Assert.Equal(agent.Id.ToString(), entry.NewValue);
+        Assert.Equal("agent.smith Display", entry.NewDisplayValue);
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_Reassignment_StoresPreviousAndNewIds()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var firstAgent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var secondAgent = await CreateUserAsync("agent.jones", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+        await PreAssignAsync(request, firstAgent);
+
+        await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = secondAgent.Id }, ToCurrentUser(admin), CancellationToken.None);
+
+        var history = await _sut.GetHistoryAsync(request.Id, ToCurrentUser(admin), CancellationToken.None);
+
+        var entry = Assert.Single(history);
+        Assert.Equal(firstAgent.Id.ToString(), entry.PreviousValue);
+        Assert.Equal(secondAgent.Id.ToString(), entry.NewValue);
+        Assert.Equal("agent.smith Display", entry.PreviousDisplayValue);
+        Assert.Equal("agent.jones Display", entry.NewDisplayValue);
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_AssignmentRemoval_StoresNullNewValue()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+        await PreAssignAsync(request, agent);
+
+        await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = null }, ToCurrentUser(admin), CancellationToken.None);
+
+        var history = await _sut.GetHistoryAsync(request.Id, ToCurrentUser(admin), CancellationToken.None);
+
+        var entry = Assert.Single(history);
+        Assert.Null(entry.NewValue);
+        Assert.Null(entry.NewDisplayValue);
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_StatusChange_StoresEnumNames()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var request = await CreateRequestAsync(category, employee);
+
+        await _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.Cancelled }, ToCurrentUser(employee), CancellationToken.None);
+
+        var history = await _sut.GetHistoryAsync(request.Id, ToCurrentUser(employee), CancellationToken.None);
+
+        var entry = Assert.Single(history);
+        Assert.Equal(RequestHistoryActions.StatusChanged, entry.Action);
+        Assert.Equal("New", entry.PreviousValue);
+        Assert.Equal("Cancelled", entry.NewValue);
+        Assert.Equal("New", entry.PreviousDisplayValue);
+        Assert.Equal("Cancelled", entry.NewDisplayValue);
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_ActorIsCurrentUser()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var request = await CreateRequestAsync(category, employee);
+
+        await _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.Cancelled }, ToCurrentUser(employee), CancellationToken.None);
+
+        var history = await _sut.GetHistoryAsync(request.Id, ToCurrentUser(employee), CancellationToken.None);
+
+        Assert.Equal(employee.Id, Assert.Single(history).ChangedBy.Id);
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_OrdersOldestFirst()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+
+        await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = agent.Id }, ToCurrentUser(admin), CancellationToken.None);
+        await _sut.ChangeStatusAsync(
+            request.Id, new UpdateRequestStatusRequest { Status = RequestStatus.InProgress }, ToCurrentUser(agent), CancellationToken.None);
+
+        var history = await _sut.GetHistoryAsync(request.Id, ToCurrentUser(admin), CancellationToken.None);
+
+        Assert.Equal(
+            [RequestHistoryActions.AssignmentChanged, RequestHistoryActions.StatusChanged],
+            history.Select(entry => entry.Action));
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_WhenEmpty_ReturnsEmptyList()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var request = await CreateRequestAsync(category, employee);
+
+        var history = await _sut.GetHistoryAsync(request.Id, ToCurrentUser(employee), CancellationToken.None);
+
+        Assert.Empty(history);
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_WhenEmployeeRequestsAnotherUsersHistory_ThrowsSupportRequestNotFoundException()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var owner = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var otherEmployee = await CreateUserAsync("john.doe", UserRole.Employee);
+        var request = await CreateRequestAsync(category, owner);
+
+        await Assert.ThrowsAsync<SupportRequestNotFoundException>(() =>
+            _sut.GetHistoryAsync(request.Id, ToCurrentUser(otherEmployee), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetHistoryAsync_SupportAgentAndAdminCanAccessAnyRequestsHistory()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var owner = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var admin = await CreateUserAsync("root.admin", UserRole.Admin);
+        var request = await CreateRequestAsync(category, owner);
+
+        var agentHistory = await _sut.GetHistoryAsync(request.Id, ToCurrentUser(agent), CancellationToken.None);
+        var adminHistory = await _sut.GetHistoryAsync(request.Id, ToCurrentUser(admin), CancellationToken.None);
+
+        Assert.NotNull(agentHistory);
+        Assert.NotNull(adminHistory);
+    }
+
+    [Fact]
+    public async Task SetAssignmentAsync_IdempotentOperation_CreatesNoHistoryOnSecondCall()
+    {
+        var category = await CreateCategoryAsync("Hardware");
+        var employee = await CreateUserAsync("jane.doe", UserRole.Employee);
+        var agent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var request = await CreateRequestAsync(category, employee);
+
+        await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = agent.Id }, ToCurrentUser(agent), CancellationToken.None);
+        await _sut.SetAssignmentAsync(
+            request.Id, new UpdateRequestAssignmentRequest { AssignedToUserId = agent.Id }, ToCurrentUser(agent), CancellationToken.None);
+
+        var history = await _sut.GetHistoryAsync(request.Id, ToCurrentUser(agent), CancellationToken.None);
+
+        Assert.Single(history);
+    }
+
+    // Eligible assignees
+
+    [Fact]
+    public async Task GetEligibleAssigneesAsync_ReturnsOnlyActiveSupportAgentsAndAdmins()
+    {
+        var activeAgent = await CreateUserAsync("agent.smith", UserRole.SupportAgent);
+        var activeAdmin = await CreateUserAsync("root.admin", UserRole.Admin);
+        await CreateUserAsync("john.doe", UserRole.Employee);
+        await CreateUserAsync("inactive.agent", UserRole.SupportAgent, isActive: false);
+
+        var assignees = await _sut.GetEligibleAssigneesAsync(CancellationToken.None);
+
+        Assert.Equal(
+            new[] { activeAdmin.Id, activeAgent.Id }.OrderBy(id => id),
+            assignees.Select(a => a.Id).OrderBy(id => id));
+    }
+
+    [Fact]
+    public async Task GetEligibleAssigneesAsync_ExcludesEmployees()
+    {
+        await CreateUserAsync("john.doe", UserRole.Employee);
+
+        var assignees = await _sut.GetEligibleAssigneesAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(assignees, a => a.Role == UserRole.Employee);
+    }
+
+    [Fact]
+    public async Task GetEligibleAssigneesAsync_ExcludesInactiveUsers()
+    {
+        var inactiveAgent = await CreateUserAsync("inactive.agent", UserRole.SupportAgent, isActive: false);
+
+        var assignees = await _sut.GetEligibleAssigneesAsync(CancellationToken.None);
+
+        Assert.DoesNotContain(assignees, a => a.Id == inactiveAgent.Id);
+    }
+
+    [Fact]
+    public async Task GetEligibleAssigneesAsync_OrdersByDisplayName()
+    {
+        await CreateUserAsync("zzz.agent", UserRole.SupportAgent);
+        await CreateUserAsync("aaa.agent", UserRole.SupportAgent);
+
+        var assignees = await _sut.GetEligibleAssigneesAsync(CancellationToken.None);
+
+        var orderedNames = assignees.Select(a => a.DisplayName).ToList();
+        Assert.Equal(orderedNames.OrderBy(name => name, StringComparer.Ordinal), orderedNames);
+    }
 }

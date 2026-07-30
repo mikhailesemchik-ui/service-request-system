@@ -80,4 +80,71 @@ public sealed class RequestsController : ControllerBase
         var created = await _requestService.CreateAsync(request, currentUser, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { requestId = created.Id }, created);
     }
+
+    [HttpPatch("{requestId}/assignment")]
+    [Authorize(Policy = "CanManageRequests")]
+    [ProducesResponseType(typeof(RequestDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<RequestDetailsDto>> SetAssignment(
+        [Range(1, int.MaxValue, ErrorMessage = "Request id must be greater than zero.")] int requestId,
+        [FromBody] UpdateRequestAssignmentRequest request,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = await _currentUserService.GetCurrentUserAsync(User, cancellationToken);
+
+        if (currentUser is null)
+        {
+            return Unauthorized();
+        }
+
+        var details = await _requestService.SetAssignmentAsync(requestId, request, currentUser, cancellationToken);
+        return Ok(details);
+    }
+
+    [HttpPatch("{requestId}/status")]
+    [ProducesResponseType(typeof(RequestDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<RequestDetailsDto>> ChangeStatus(
+        [Range(1, int.MaxValue, ErrorMessage = "Request id must be greater than zero.")] int requestId,
+        [FromBody] UpdateRequestStatusRequest request,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = await _currentUserService.GetCurrentUserAsync(User, cancellationToken);
+
+        if (currentUser is null)
+        {
+            return Unauthorized();
+        }
+
+        var details = await _requestService.ChangeStatusAsync(requestId, request, currentUser, cancellationToken);
+        return Ok(details);
+    }
+
+    [HttpGet("{requestId}/history")]
+    [ProducesResponseType(typeof(IReadOnlyList<RequestHistoryDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<RequestHistoryDto>>> GetHistory(
+        [Range(1, int.MaxValue, ErrorMessage = "Request id must be greater than zero.")] int requestId,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = await _currentUserService.GetCurrentUserAsync(User, cancellationToken);
+
+        if (currentUser is null)
+        {
+            return Unauthorized();
+        }
+
+        var history = await _requestService.GetHistoryAsync(requestId, currentUser, cancellationToken);
+        return Ok(history);
+    }
 }

@@ -6,10 +6,15 @@ import {
   CreateRequestPayload,
   DEFAULT_PAGE_SIZE,
   PagedResult,
+  REQUEST_ASSIGNEES_PATH,
   REQUESTS_PATH,
+  RequestAssignee,
   RequestDetails,
+  RequestHistoryItem,
   RequestListItem,
   RequestListQuery,
+  UpdateRequestAssignmentPayload,
+  UpdateRequestStatusPayload,
 } from '../models/request.models';
 
 /** Talks to the `/api/requests` endpoints. Components must not build these URLs themselves. */
@@ -44,5 +49,21 @@ export class RequestApiService {
 
   createRequest(payload: CreateRequestPayload): Observable<RequestDetails> {
     return this.http.post<RequestDetails>(this.baseUrl, payload);
+  }
+
+  setAssignment(requestId: number, payload: UpdateRequestAssignmentPayload): Observable<RequestDetails> {
+    return this.http.patch<RequestDetails>(`${this.baseUrl}/${requestId}/assignment`, payload);
+  }
+
+  changeStatus(requestId: number, payload: UpdateRequestStatusPayload): Observable<RequestDetails> {
+    return this.http.patch<RequestDetails>(`${this.baseUrl}/${requestId}/status`, payload);
+  }
+
+  getHistory(requestId: number): Observable<RequestHistoryItem[]> {
+    return this.http.get<RequestHistoryItem[]>(`${this.baseUrl}/${requestId}/history`);
+  }
+
+  getEligibleAssignees(): Observable<RequestAssignee[]> {
+    return this.http.get<RequestAssignee[]>(`${environment.apiBaseUrl}${REQUEST_ASSIGNEES_PATH}`);
   }
 }

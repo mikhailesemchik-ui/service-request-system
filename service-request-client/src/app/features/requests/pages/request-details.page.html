@@ -64,6 +64,137 @@
 
       <h2>Description</h2>
       <p class="request-details-page__description">{{ details.description }}</p>
+
+      @if (canManageAssignment()) {
+        <section class="request-details-page__section" aria-labelledby="assignment-heading">
+          <h2 id="assignment-heading">Assignment</h2>
+
+          @if (assignmentError(); as message) {
+            <p class="request-details-page__error" role="alert">{{ message }}</p>
+          }
+
+          @if (isAdmin()) {
+            @if (assigneesError(); as message) {
+              <div class="request-details-page__status" role="alert">
+                <p>{{ message }}</p>
+                <button type="button" (click)="retryAssignees()">Retry</button>
+              </div>
+            } @else {
+              <div class="request-details-page__assignment-controls">
+                <label for="assignee-select">Assignee</label>
+                <select
+                  id="assignee-select"
+                  [value]="selectedAssigneeId()"
+                  (change)="onAssigneeSelectChange($any($event.target).value)"
+                  [disabled]="isAssignmentSaving() || isStatusSaving() || assignees() === null"
+                >
+                  <option value="">
+                    {{ assignees() === null ? 'Loading assignees…' : 'Select an assignee' }}
+                  </option>
+                  @for (assignee of assignees(); track assignee.id) {
+                    <option [value]="assignee.id">{{ assignee.displayName }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  (click)="assignSelected()"
+                  [disabled]="isAssignmentSaving() || isStatusSaving() || selectedAssigneeId() === ''"
+                >
+                  {{ details.assignedTo ? 'Reassign' : 'Assign' }}
+                </button>
+                @if (details.assignedTo) {
+                  <button
+                    type="button"
+                    (click)="removeAssignment()"
+                    [disabled]="isAssignmentSaving() || isStatusSaving()"
+                  >
+                    Remove assignment
+                  </button>
+                }
+              </div>
+            }
+          } @else {
+            <div class="request-details-page__assignment-controls">
+              @if (canAssignToSelf()) {
+                <button type="button" (click)="assignToSelf()" [disabled]="isAssignmentSaving() || isStatusSaving()">
+                  Assign to me
+                </button>
+              }
+              @if (canRemoveOwnAssignment()) {
+                <button
+                  type="button"
+                  (click)="removeOwnAssignment()"
+                  [disabled]="isAssignmentSaving() || isStatusSaving()"
+                >
+                  Remove my assignment
+                </button>
+              }
+            </div>
+          }
+        </section>
+      }
+
+      @if (statusOptions().length > 0) {
+        <section class="request-details-page__section" aria-labelledby="status-heading">
+          <h2 id="status-heading">Actions</h2>
+
+          @if (statusError(); as message) {
+            <p class="request-details-page__error" role="alert">{{ message }}</p>
+          }
+
+          <div class="request-details-page__status-actions">
+            @for (option of statusOptions(); track option) {
+              @if (confirmingStatus() === option) {
+                <span class="confirm" role="group" aria-label="Confirm action">
+                  <span class="confirm__text">Are you sure? This action cannot be undone.</span>
+                  <button
+                    type="button"
+                    (click)="requestStatusChange(option)"
+                    [disabled]="isStatusSaving() || isAssignmentSaving()"
+                  >
+                    Confirm
+                  </button>
+                  <button type="button" (click)="cancelStatusConfirmation()">Cancel</button>
+                </span>
+              } @else {
+                <button
+                  type="button"
+                  (click)="requestStatusChange(option)"
+                  [disabled]="isStatusSaving() || isAssignmentSaving()"
+                >
+                  {{ statusLabels[option] }}
+                </button>
+              }
+            }
+          </div>
+        </section>
+      }
+
+      <section class="request-details-page__section" aria-labelledby="history-heading">
+        <h2 id="history-heading">History</h2>
+
+        @if (isHistoryLoading()) {
+          <p class="request-details-page__status" role="status">Loading history…</p>
+        } @else if (historyError() !== null) {
+          <div class="request-details-page__status" role="alert">
+            <p>{{ historyError() }}</p>
+            <button type="button" (click)="retryHistory()">Retry</button>
+          </div>
+        } @else if ((history()?.length ?? 0) === 0) {
+          <p class="request-details-page__status">No history yet.</p>
+        } @else {
+          <ul class="request-details-page__history">
+            @for (entry of history(); track entry.id) {
+              <li>
+                <p class="request-details-page__history-description">{{ historyDescription(entry) }}</p>
+                <p class="request-details-page__history-meta">
+                  {{ entry.changedBy.displayName }} — {{ entry.createdAt | date: 'medium' }}
+                </p>
+              </li>
+            }
+          </ul>
+        }
+      </section>
     </article>
   }
 </section>

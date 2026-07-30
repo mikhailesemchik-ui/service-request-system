@@ -67,6 +67,33 @@ export interface RequestListQuery {
   categoryId?: number;
 }
 
+export interface UpdateRequestAssignmentPayload {
+  assignedToUserId: number | null;
+}
+
+export interface UpdateRequestStatusPayload {
+  status: RequestStatus;
+}
+
+export interface RequestHistoryItem {
+  id: number;
+  action: string;
+  previousValue: string | null;
+  newValue: string | null;
+  previousDisplayValue: string | null;
+  newDisplayValue: string | null;
+  changedBy: RequestUserSummary;
+  createdAt: string;
+}
+
+export interface RequestAssignee {
+  id: number;
+  displayName: string;
+  role: 'SupportAgent' | 'Admin';
+}
+
 export const REQUESTS_PATH = '/api/requests';
+
+export const REQUEST_ASSIGNEES_PATH = '/api/request-assignees';
 
 export const DEFAULT_PAGE_SIZE = 20;

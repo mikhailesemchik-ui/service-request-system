@@ -19,4 +19,23 @@ public interface IRequestService
         CreateRequestRequest request,
         AuthenticatedUserDto currentUser,
         CancellationToken cancellationToken);
+
+    Task<RequestDetailsDto> SetAssignmentAsync(
+        int requestId,
+        UpdateRequestAssignmentRequest request,
+        AuthenticatedUserDto currentUser,
+        CancellationToken cancellationToken);
+
+    Task<RequestDetailsDto> ChangeStatusAsync(
+        int requestId,
+        UpdateRequestStatusRequest request,
+        AuthenticatedUserDto currentUser,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<RequestHistoryDto>> GetHistoryAsync(
+        int requestId,
+        AuthenticatedUserDto currentUser,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<RequestAssigneeDto>> GetEligibleAssigneesAsync(CancellationToken cancellationToken);
 }

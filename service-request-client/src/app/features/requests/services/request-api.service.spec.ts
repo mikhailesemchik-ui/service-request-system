@@ -2,10 +2,11 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { environment } from '../../../../environments/environment';
-import { PagedResult, RequestDetails, RequestListItem } from '../models/request.models';
+import { PagedResult, RequestAssignee, RequestDetails, RequestHistoryItem, RequestListItem } from '../models/request.models';
 import { RequestApiService } from './request-api.service';
 
 const requestsUrl = `${environment.apiBaseUrl}/api/requests`;
+const requestAssigneesUrl = `${environment.apiBaseUrl}/api/request-assignees`;
 
 const testListItem: RequestListItem = {
   id: 1,
@@ -115,5 +116,64 @@ describe('RequestApiService', () => {
       priority: 'High',
     });
     req.flush(testDetails);
+  });
+
+  it('sends the assignment PATCH body', () => {
+    service.setAssignment(1, { assignedToUserId: 4 }).subscribe();
+
+    const req = httpMock.expectOne(`${requestsUrl}/1/assignment`);
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ assignedToUserId: 4 });
+    req.flush(testDetails);
+  });
+
+  it('sends a null assignee to remove an assignment', () => {
+    service.setAssignment(1, { assignedToUserId: null }).subscribe();
+
+    const req = httpMock.expectOne(`${requestsUrl}/1/assignment`);
+    expect(req.request.body).toEqual({ assignedToUserId: null });
+    req.flush(testDetails);
+  });
+
+  it('sends the status PATCH body', () => {
+    service.changeStatus(1, { status: 'InProgress' }).subscribe();
+
+    const req = httpMock.expectOne(`${requestsUrl}/1/status`);
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ status: 'InProgress' });
+    req.flush(testDetails);
+  });
+
+  it('retrieves request history', () => {
+    const historyItem: RequestHistoryItem = {
+      id: 1,
+      action: 'StatusChanged',
+      previousValue: 'New',
+      newValue: 'InProgress',
+      previousDisplayValue: 'New',
+      newDisplayValue: 'InProgress',
+      changedBy: { id: 3, displayName: 'Development Employee' },
+      createdAt: '2026-01-01T00:00:00Z',
+    };
+
+    service.getHistory(1).subscribe((history) => {
+      expect(history).toEqual([historyItem]);
+    });
+
+    const req = httpMock.expectOne(`${requestsUrl}/1/history`);
+    expect(req.request.method).toBe('GET');
+    req.flush([historyItem]);
+  });
+
+  it('retrieves eligible assignees', () => {
+    const assignee: RequestAssignee = { id: 4, displayName: 'Development Agent', role: 'SupportAgent' };
+
+    service.getEligibleAssignees().subscribe((assignees) => {
+      expect(assignees).toEqual([assignee]);
+    });
+
+    const req = httpMock.expectOne(requestAssigneesUrl);
+    expect(req.request.method).toBe('GET');
+    req.flush([assignee]);
   });
 });

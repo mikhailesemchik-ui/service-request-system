@@ -31,14 +31,15 @@ service-request-system/
 └── README.md
 ```
 
-The backend implements request-category management, service request creation and
-retrieval, and a JWT-based authentication/authorization foundation (login,
-current-user endpoint, role policies). The Angular client implements the
-corresponding authentication foundation (login, session restoration, route
-guards, authenticated shell), a category management UI (view for all
-authenticated roles; create, edit, and activate/deactivate for Admin), and a
-service requests UI (list, create, details). Assignment, comments, status
-changes, and request history are not yet implemented.
+The backend implements request-category management, service request creation,
+retrieval, assignment, status transitions, and history, plus a JWT-based
+authentication/authorization foundation (login, current-user endpoint, role
+policies). The Angular client implements the corresponding authentication
+foundation (login, session restoration, route guards, authenticated shell), a
+category management UI (view for all authenticated roles; create, edit, and
+activate/deactivate for Admin), and a service requests UI (list, create,
+details with assignment/status actions and history). Comments, attachments,
+request editing, and deletion are not yet implemented.
 
 ## Prerequisites
 
@@ -221,9 +222,53 @@ every authenticated role, with the visible scope determined entirely by the back
 
 This is enforced server-side (`GET /api/requests`, `GET /api/requests/{id}`,
 `POST /api/requests`), not just hidden in the UI. Category selection when creating a request
-is restricted to active categories only. Assignment, status changes, comments, and request
-history are out of scope for this first version — a request can currently only be created
-and viewed.
+is restricted to active categories only.
+
+### Assignment and status management
+
+A request's details page also supports assignment and status changes, both enforced by the
+backend regardless of what the UI shows:
+
+**Assignment** (`PATCH /api/requests/{id}/assignment`, admin-only assignee list at
+`GET /api/request-assignees`):
+
+- **Employee**: no assignment controls; assignment is not visible as an action.
+- **SupportAgent**: can assign an unassigned request to themselves, and remove their own
+  assignment. Cannot assign to anyone else, and cannot take over or remove a request already
+  assigned to a different agent.
+- **Admin**: can assign an unassigned or already-assigned request to any active
+  `SupportAgent` or `Admin`, reassign between them, or remove any assignment. Cannot assign to
+  an `Employee` or an inactive user.
+- Assigning to the current assignee, or removing an assignment that is already absent, is a
+  no-op — it succeeds without creating a duplicate history entry.
+- A closed or cancelled request can no longer be assigned or reassigned.
+
+**Status transitions** (`PATCH /api/requests/{id}/status`) follow one transition policy for
+every role (`New → InProgress/Cancelled`, `InProgress → WaitingForUser/Resolved/Cancelled`,
+`WaitingForUser → InProgress/Resolved/Cancelled`, `Resolved → InProgress/Closed`; `Closed` and
+`Cancelled` are terminal). On top of that shared policy:
+
+- **Employee**: can cancel their own request from `New`, `InProgress`, or `WaitingForUser`,
+  and can close their own request only once it is `Resolved`. Cannot set any other status.
+- **SupportAgent**: can move a request they are currently assigned to through `InProgress`,
+  `WaitingForUser`, `Resolved`, and `Cancelled` (including reopening `Resolved` back to
+  `InProgress`). Cannot change a request that is unassigned or assigned to a different agent,
+  and cannot close a request.
+- **Admin**: can perform any transition the shared policy allows, without needing to be the
+  assignee.
+- Moving a request into `InProgress` requires it to already have an assignee — nothing is
+  auto-assigned as a side effect of a status change.
+- Setting a request to its current status is a no-op (no duplicate history entry).
+
+### Request history
+
+Every actual assignment change and status change is recorded (`GET /api/requests/{id}/history`)
+with the acting user, a timestamp, and both the raw stored value and a human-readable version
+(e.g. a resolved display name instead of a bare user ID). Idempotent no-op calls do not create
+history entries. History and its triggering mutation are written in the same database
+operation, so a failed mutation never leaves behind an orphaned history row.
+
+Comments, attachments, request editing, and deletion are not implemented in this version.
 
 ### Session storage decision
 
@@ -273,15 +318,16 @@ npx ng test --watch=false
 - Registration, refresh tokens, token renewal, password reset, email
   verification, and user-management CRUD are not implemented — only login
   and the current-user endpoint exist.
-- Requests can be created and viewed only. There is no assignment, no status
-  changes (a request stays `New` forever in this version), no comments, no
-  request history, no editing, and no deletion.
-- Request attachments are not implemented.
+- Requests support creation, viewing, assignment, and status transitions
+  (see "Assignment and status management" above), each recorded in request
+  history. There are no comments, no attachments, no request editing, and
+  no deletion.
 - The Angular client implements login, session restoration, route guards,
   a minimal authenticated shell (Dashboard, Categories, Requests), category
   management (view for all roles; create/edit/activate/deactivate for
   Admin), and service requests (list with filters/pagination, create,
-  details — view for all roles, scoped to own requests for Employee).
+  details with assignment/status actions and history — view for all roles,
+  scoped to own requests for Employee).
   There is no category search, sorting, pagination, or deletion — the list
   is expected to stay small, and deactivation is used instead of deletion
   so category history is preserved. Request search and sorting controls are

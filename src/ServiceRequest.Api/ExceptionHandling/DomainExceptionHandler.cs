@@ -25,6 +25,10 @@ public sealed class DomainExceptionHandler : IExceptionHandler
             SupportRequestNotFoundException => ((int?)StatusCodes.Status404NotFound, "Request not found"),
             RequestCategoryInactiveException => ((int?)StatusCodes.Status409Conflict, "Category is not active"),
             CurrentUserUnavailableException => ((int?)StatusCodes.Status401Unauthorized, "Current user unavailable"),
+            InvalidRequestStatusTransitionException => ((int?)StatusCodes.Status409Conflict, "Invalid status transition"),
+            InvalidRequestAssigneeException => ((int?)StatusCodes.Status409Conflict, "Invalid assignee"),
+            RequestManagementForbiddenException => ((int?)StatusCodes.Status403Forbidden, "Forbidden"),
+            RequestAssigneeNotFoundException => ((int?)StatusCodes.Status404NotFound, "Assignee not found"),
             _ => (null, null),
         };
 

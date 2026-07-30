@@ -22,6 +22,13 @@ public sealed class RequestHistoryConfiguration : IEntityTypeConfiguration<Reque
         builder.Property(history => history.NewValue)
             .HasMaxLength(1000);
 
+        // See SupportRequestConfiguration.CreatedAt: SQLite's EF Core provider cannot translate
+        // ORDER BY on DateTimeOffset columns. CreatedAt is always UTC, so this round-trips losslessly.
+        builder.Property(history => history.CreatedAt)
+            .HasConversion(
+                toProvider => toProvider.UtcDateTime,
+                fromProvider => new DateTimeOffset(fromProvider, TimeSpan.Zero));
+
         builder.HasOne(history => history.SupportRequest)
             .WithMany()
             .HasForeignKey(history => history.ServiceRequestId)
