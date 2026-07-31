@@ -274,14 +274,29 @@ public sealed class RequestService : IRequestService
                 .Where(user => referencedUserIds.Contains(user.Id))
                 .ToDictionaryAsync(user => user.Id, user => user.DisplayName, cancellationToken);
 
+        var referencedCategoryIds = entries
+            .Where(entry => entry.Action == RequestHistoryActions.CategoryChanged)
+            .SelectMany(entry => new[] { entry.PreviousValue, entry.NewValue })
+            .Where(value => value != null)
+            .Select(value => int.Parse(value!))
+            .Distinct()
+            .ToList();
+
+        var categoryNames = referencedCategoryIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _dbContext.RequestCategories
+                .AsNoTracking()
+                .Where(category => referencedCategoryIds.Contains(category.Id))
+                .ToDictionaryAsync(category => category.Id, category => category.Name, cancellationToken);
+
         return entries
             .Select(entry => new RequestHistoryDto(
                 entry.Id,
                 entry.Action,
                 entry.PreviousValue,
                 entry.NewValue,
-                ResolveDisplayValue(entry.Action, entry.PreviousValue, userDisplayNames),
-                ResolveDisplayValue(entry.Action, entry.NewValue, userDisplayNames),
+                ResolveDisplayValue(entry.Action, entry.PreviousValue, userDisplayNames, categoryNames),
+                ResolveDisplayValue(entry.Action, entry.NewValue, userDisplayNames, categoryNames),
                 entry.ChangedBy,
                 entry.CreatedAt))
             .ToList();
@@ -436,8 +451,79 @@ public sealed class RequestService : IRequestService
         }
     }
 
+    public async Task<RequestDetailsDto> UpdateClassificationAsync(
+        int requestId,
+        UpdateRequestClassificationRequest request,
+        AuthenticatedUserDto currentUser,
+        CancellationToken cancellationToken)
+    {
+        var actor = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == currentUser.Id, cancellationToken)
+            ?? throw new CurrentUserUnavailableException();
+
+        var supportRequest = await LoadTrackedRequestAsync(requestId, cancellationToken)
+            ?? throw new SupportRequestNotFoundException(requestId);
+
+        if (currentUser.Role == nameof(UserRole.Employee))
+        {
+            throw new RequestClassificationForbiddenException();
+        }
+
+        if (currentUser.Role == nameof(UserRole.SupportAgent) &&
+            supportRequest.AssignedToUserId != currentUser.Id)
+        {
+            throw new RequestClassificationForbiddenException();
+        }
+
+        if (supportRequest.Status is RequestStatus.Closed or RequestStatus.Cancelled)
+        {
+            throw new RequestClassificationLockedException();
+        }
+
+        var newCategory = await _dbContext.RequestCategories
+            .SingleOrDefaultAsync(c => c.Id == request.CategoryId, cancellationToken)
+            ?? throw new RequestCategoryNotFoundException(request.CategoryId);
+
+        if (!newCategory.IsActive)
+        {
+            throw new RequestCategoryInactiveException(newCategory.Id);
+        }
+
+        var previousCategoryId = supportRequest.CategoryId;
+        var previousPriority = supportRequest.Priority;
+
+        var categoryChanged = supportRequest.ChangeCategory(newCategory);
+        var priorityChanged = supportRequest.ChangePriority(request.Priority);
+
+        if (categoryChanged)
+        {
+            _dbContext.RequestHistory.Add(new RequestHistory(
+                supportRequest,
+                actor,
+                RequestHistoryActions.CategoryChanged,
+                previousCategoryId.ToString(),
+                newCategory.Id.ToString()));
+        }
+
+        if (priorityChanged)
+        {
+            _dbContext.RequestHistory.Add(new RequestHistory(
+                supportRequest,
+                actor,
+                RequestHistoryActions.PriorityChanged,
+                previousPriority.ToString(),
+                request.Priority.ToString()));
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return ToDetailsDto(supportRequest);
+    }
+
     private static string? ResolveDisplayValue(
-        string action, string? rawValue, IReadOnlyDictionary<int, string> userDisplayNames)
+        string action,
+        string? rawValue,
+        IReadOnlyDictionary<int, string> userDisplayNames,
+        IReadOnlyDictionary<int, string> categoryNames)
     {
         if (rawValue is null)
         {
@@ -447,6 +533,11 @@ public sealed class RequestService : IRequestService
         if (action == RequestHistoryActions.AssignmentChanged && int.TryParse(rawValue, out var userId))
         {
             return userDisplayNames.TryGetValue(userId, out var displayName) ? displayName : rawValue;
+        }
+
+        if (action == RequestHistoryActions.CategoryChanged && int.TryParse(rawValue, out var categoryId))
+        {
+            return categoryNames.TryGetValue(categoryId, out var categoryName) ? categoryName : rawValue;
         }
 
         return rawValue;

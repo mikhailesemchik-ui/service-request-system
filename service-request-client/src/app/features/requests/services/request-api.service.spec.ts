@@ -176,4 +176,39 @@ describe('RequestApiService', () => {
     expect(req.request.method).toBe('GET');
     req.flush([assignee]);
   });
+
+  it('sends the classification PATCH to the correct URL', () => {
+    service.updateClassification(42, { categoryId: 2, priority: 'High' }).subscribe();
+
+    const req = httpMock.expectOne(`${requestsUrl}/42/classification`);
+    expect(req.request.method).toBe('PATCH');
+    req.flush(testDetails);
+  });
+
+  it('sends exactly categoryId and priority in the classification body', () => {
+    service.updateClassification(42, { categoryId: 3, priority: 'Critical' }).subscribe();
+
+    const req = httpMock.expectOne(`${requestsUrl}/42/classification`);
+    expect(req.request.body).toEqual({ categoryId: 3, priority: 'Critical' });
+    req.flush(testDetails);
+  });
+
+  it('returns the updated RequestDetails from classification', () => {
+    const updatedDetails: RequestDetails = { ...testDetails, priority: 'Critical' };
+
+    service.updateClassification(42, { categoryId: 1, priority: 'Critical' }).subscribe((result) => {
+      expect(result).toEqual(updatedDetails);
+    });
+
+    httpMock.expectOne(`${requestsUrl}/42/classification`).flush(updatedDetails);
+  });
+
+  it('does not include unrelated fields in the classification body', () => {
+    service.updateClassification(42, { categoryId: 2, priority: 'Low' }).subscribe();
+
+    const req = httpMock.expectOne(`${requestsUrl}/42/classification`);
+    const bodyKeys = Object.keys(req.request.body as object);
+    expect(bodyKeys).toEqual(jasmine.arrayWithExactContents(['categoryId', 'priority']));
+    req.flush(testDetails);
+  });
 });

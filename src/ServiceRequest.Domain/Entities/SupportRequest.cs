@@ -66,6 +66,45 @@ public sealed class SupportRequest
         UpdatedAt = now;
     }
 
+    /// <returns><c>true</c> if the category actually changed; <c>false</c> for an idempotent no-op.</returns>
+    public bool ChangeCategory(RequestCategory newCategory)
+    {
+        ArgumentNullException.ThrowIfNull(newCategory);
+
+        if (Status is RequestStatus.Closed or RequestStatus.Cancelled)
+        {
+            throw new RequestClassificationLockedException();
+        }
+
+        if (CategoryId == newCategory.Id)
+        {
+            return false;
+        }
+
+        Category = newCategory;
+        CategoryId = newCategory.Id;
+        UpdatedAt = DateTimeOffset.UtcNow;
+        return true;
+    }
+
+    /// <returns><c>true</c> if the priority actually changed; <c>false</c> for an idempotent no-op.</returns>
+    public bool ChangePriority(RequestPriority newPriority)
+    {
+        if (Status is RequestStatus.Closed or RequestStatus.Cancelled)
+        {
+            throw new RequestClassificationLockedException();
+        }
+
+        if (Priority == newPriority)
+        {
+            return false;
+        }
+
+        Priority = newPriority;
+        UpdatedAt = DateTimeOffset.UtcNow;
+        return true;
+    }
+
     /// <returns><c>true</c> if the assignee actually changed; <c>false</c> for an idempotent no-op.</returns>
     public bool AssignTo(ApplicationUser assignee)
     {

@@ -10,6 +10,7 @@ import { RequestDetailsPageComponent } from './request-details.page';
 
 const requestsUrl = `${environment.apiBaseUrl}/api/requests`;
 const requestAssigneesUrl = `${environment.apiBaseUrl}/api/request-assignees`;
+const categoriesUrl = `${environment.apiBaseUrl}/api/categories`;
 
 const testDetails: RequestDetails = {
   id: 42,
@@ -92,6 +93,9 @@ describe('RequestDetailsPageComponent', () => {
     httpMock.expectOne(`${requestsUrl}/42/comments`).flush(comments);
     if (currentRole === 'Admin') {
       httpMock.expectOne(requestAssigneesUrl).flush(assignees);
+    }
+    if (currentRole === 'Admin' || currentRole === 'SupportAgent') {
+      httpMock.expectOne((req) => req.url === categoriesUrl).flush([]);
     }
   }
 
@@ -240,6 +244,8 @@ describe('RequestDetailsPageComponent', () => {
     const req = httpMock.expectOne(requestAssigneesUrl);
     expect(req.request.method).toBe('GET');
     req.flush([{ id: 4, displayName: 'Support Agent', role: 'SupportAgent' }]);
+
+    httpMock.expectOne((req) => req.url === categoriesUrl).flush([]);
   });
 
   it('does not load eligible assignees for a SupportAgent', () => {
@@ -589,5 +595,431 @@ describe('RequestDetailsPageComponent', () => {
     const req = httpMock.expectOne(`${requestsUrl}/42/history`);
     expect(req.request.method).toBe('GET');
     req.flush([]);
+  });
+
+  // Classification visibility
+
+  it('Employee sees category and priority as read-only labels, no edit form', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    flushDetails(testDetails);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Hardware');
+    expect(fixture.nativeElement.textContent).toContain('High');
+    expect(fixture.nativeElement.querySelector('#classification-heading')).toBeNull();
+    expect(fixture.nativeElement.querySelector('#classification-category')).toBeNull();
+  });
+
+  it('unassigned SupportAgent sees no classification edit form', () => {
+    createFixture('SupportAgent', 4);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#classification-category')).toBeNull();
+  });
+
+  it('SupportAgent assigned to another user sees no classification edit form', () => {
+    createFixture('SupportAgent', 999);
+    fixture.detectChanges();
+    flushDetails(assignedToAgentInProgress);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#classification-category')).toBeNull();
+  });
+
+  it('assigned SupportAgent sees classification edit controls', () => {
+    createFixture('SupportAgent', 4);
+    fixture.detectChanges();
+    flushDetails(assignedToAgentInProgress);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#classification-category')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('#classification-priority')).not.toBeNull();
+  });
+
+  it('Admin sees classification edit controls on any non-terminal request', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#classification-category')).not.toBeNull();
+  });
+
+  it('hides classification edit controls on a Closed request for Admin', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    const closedRequest: RequestDetails = {
+      ...testDetails,
+      status: 'Closed',
+      closedAt: '2026-01-03T00:00:00Z',
+    };
+    flushDetails(closedRequest);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#classification-category')).toBeNull();
+  });
+
+  it('hides classification edit controls on a Cancelled request for Admin', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    const cancelledRequest: RequestDetails = {
+      ...testDetails,
+      status: 'Cancelled',
+      cancelledAt: '2026-01-03T00:00:00Z',
+    };
+    flushDetails(cancelledRequest);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#classification-category')).toBeNull();
+  });
+
+  // Form state
+
+  it('prefills category and priority from the loaded request', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    httpMock.expectOne(`${requestsUrl}/42`).flush(testDetails);
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+    httpMock.expectOne(`${requestsUrl}/42/comments`).flush([]);
+    httpMock.expectOne(requestAssigneesUrl).flush([]);
+    httpMock
+      .expectOne((req) => req.url === categoriesUrl)
+      .flush([{ id: 1, name: 'Hardware', isActive: true }]);
+    fixture.detectChanges();
+
+    const categorySelect: HTMLSelectElement = fixture.nativeElement.querySelector('#classification-category');
+    const prioritySelect: HTMLSelectElement = fixture.nativeElement.querySelector('#classification-priority');
+    expect(Number(categorySelect.value)).toBe(testDetails.category.id);
+    expect(prioritySelect.value).toBe(testDetails.priority);
+  });
+
+  it('loads active categories into the category select', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    httpMock.expectOne(`${requestsUrl}/42`).flush(unassignedNewRequest);
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+    httpMock.expectOne(`${requestsUrl}/42/comments`).flush([]);
+    httpMock.expectOne(requestAssigneesUrl).flush([]);
+    httpMock
+      .expectOne((req) => req.url === categoriesUrl)
+      .flush([
+        { id: 1, name: 'Hardware', isActive: true },
+        { id: 2, name: 'Software', isActive: true },
+      ]);
+    fixture.detectChanges();
+
+    const options: HTMLOptionElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('#classification-category option'),
+    );
+    const names = options.map((o) => o.textContent?.trim());
+    expect(names).toContain('Hardware');
+    expect(names).toContain('Software');
+  });
+
+  it('sends only categoryId and priority when classification is submitted', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest, [], [], []);
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('form[aria-label="Edit classification"] button[type="submit"]').click();
+
+    const req = httpMock.expectOne(`${requestsUrl}/42/classification`);
+    expect(Object.keys(req.request.body as object)).toEqual(jasmine.arrayWithExactContents(['categoryId', 'priority']));
+    expect(req.request.body).toEqual({ categoryId: unassignedNewRequest.category.id, priority: unassignedNewRequest.priority });
+    req.flush(unassignedNewRequest);
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  it('sends a priority change with the original category', () => {
+    createFixture('SupportAgent', 4);
+    fixture.detectChanges();
+    flushDetails(assignedToAgentInProgress, [], [], []);
+    fixture.detectChanges();
+
+    // Use the form API to change priority, bypassing Angular CVA internal value strings.
+    (fixture.componentInstance as any).classificationForm.controls.priority.setValue('Critical');
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('form[aria-label="Edit classification"] button[type="submit"]').click();
+
+    const req = httpMock.expectOne(`${requestsUrl}/42/classification`);
+    expect(req.request.body).toEqual({ categoryId: testDetails.category.id, priority: 'Critical' });
+    req.flush({ ...assignedToAgentInProgress, priority: 'Critical' });
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  it('prevents a duplicate classification submission while saving', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest, [], [], []);
+    fixture.detectChanges();
+
+    const submitButton: HTMLButtonElement = fixture.nativeElement.querySelector(
+      'form[aria-label="Edit classification"] button[type="submit"]',
+    );
+    submitButton.click();
+    submitButton.click();
+
+    const requests = httpMock.match(`${requestsUrl}/42/classification`);
+    expect(requests.length).toBe(1);
+    requests[0].flush(unassignedNewRequest);
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  it('reset restores category and priority to the last loaded values', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails(testDetails, [], [], []);
+    fixture.detectChanges();
+
+    const form = (fixture.componentInstance as any).classificationForm;
+    form.controls.priority.setValue('Low');
+    fixture.detectChanges();
+    expect(form.controls.priority.value).toBe('Low');
+
+    const resetButton: HTMLButtonElement = fixture.nativeElement.querySelector(
+      'form[aria-label="Edit classification"] button[type="button"]',
+    );
+    resetButton.click();
+    fixture.detectChanges();
+
+    expect(form.controls.priority.value).toBe(testDetails.priority);
+  });
+
+  // Success and failure
+
+  it('replaces displayed request details on classification success', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest, [], [], []);
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('form[aria-label="Edit classification"] button[type="submit"]').click();
+    const updatedRequest = { ...unassignedNewRequest, priority: 'Critical' as const };
+    httpMock.expectOne(`${requestsUrl}/42/classification`).flush(updatedRequest);
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Critical');
+  });
+
+  it('reloads history after successful classification', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest, [], [], []);
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('form[aria-label="Edit classification"] button[type="submit"]').click();
+
+    httpMock.expectOne(`${requestsUrl}/42/classification`).flush(unassignedNewRequest);
+
+    const historyReq = httpMock.expectOne(`${requestsUrl}/42/history`);
+    expect(historyReq.request.method).toBe('GET');
+    historyReq.flush([]);
+  });
+
+  it('updates the form baseline after classification success', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest, [], [], []);
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('form[aria-label="Edit classification"] button[type="submit"]').click();
+    const updatedRequest: RequestDetails = { ...unassignedNewRequest, priority: 'Critical' };
+    httpMock.expectOne(`${requestsUrl}/42/classification`).flush(updatedRequest);
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+    fixture.detectChanges();
+
+    const prioritySelect: HTMLSelectElement = fixture.nativeElement.querySelector('#classification-priority');
+    expect(prioritySelect.value).toBe('Critical');
+  });
+
+  it('does not optimistically update displayed request before success', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest, [], [], []);
+    fixture.detectChanges();
+
+    (fixture.componentInstance as any).classificationForm.controls.priority.setValue('Critical');
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('form[aria-label="Edit classification"] button[type="submit"]').click();
+    fixture.detectChanges();
+
+    // The PATCH is in-flight. The top-level meta dd for Priority should still show the original value.
+    const topMetaDivs: HTMLElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.request-details-page__meta')[0].querySelectorAll('div'),
+    );
+    const priorityDiv = topMetaDivs.find((div) => div.querySelector('dt')?.textContent?.trim() === 'Priority');
+    expect(priorityDiv?.querySelector('dd')?.textContent?.trim()).toBe(unassignedNewRequest.priority);
+
+    // Flush the in-flight PATCH to satisfy afterEach verification.
+    httpMock.expectOne(`${requestsUrl}/42/classification`).flush(unassignedNewRequest);
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  it('shows a permission error on a 403 response', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest, [], [], []);
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('form[aria-label="Edit classification"] button[type="submit"]').click();
+    httpMock
+      .expectOne(`${requestsUrl}/42/classification`)
+      .flush({}, { status: 403, statusText: 'Forbidden' });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('You do not have permission to perform this action.');
+  });
+
+  it('shows a problem-details message on a 409 response', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest, [], [], []);
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('form[aria-label="Edit classification"] button[type="submit"]').click();
+    httpMock
+      .expectOne(`${requestsUrl}/42/classification`)
+      .flush(
+        { detail: 'Closed or cancelled requests cannot be changed.' },
+        { status: 409, statusText: 'Conflict' },
+      );
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Closed or cancelled requests cannot be changed.');
+  });
+
+  it('preserves form values when the classification request fails', () => {
+    createFixture('SupportAgent', 4);
+    fixture.detectChanges();
+    flushDetails(assignedToAgentInProgress, [], [], []);
+    fixture.detectChanges();
+
+    const form = (fixture.componentInstance as any).classificationForm;
+    form.controls.priority.setValue('Critical');
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('form[aria-label="Edit classification"] button[type="submit"]').click();
+
+    httpMock
+      .expectOne(`${requestsUrl}/42/classification`)
+      .flush({ detail: 'Server error.' }, { status: 500, statusText: 'Server Error' });
+    fixture.detectChanges();
+
+    expect(form.controls.priority.value).toBe('Critical');
+  });
+
+  // Concurrency
+
+  it('classification submission is blocked while an assignment save is in flight', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails(assignedToAgentInProgress, [], [{ id: 5, displayName: 'Agent Two', role: 'SupportAgent' }]);
+    fixture.detectChanges();
+
+    // Start assignment save
+    const select: HTMLSelectElement = fixture.nativeElement.querySelector('#assignee-select');
+    select.value = '5';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelectorAll('.request-details-page__assignment-controls button')[0]
+      .click();
+
+    // Assignment is in-flight; now try classification — it must be blocked.
+    fixture.nativeElement.querySelector('form[aria-label="Edit classification"] button[type="submit"]').click();
+
+    const classificationRequests = httpMock.match(`${requestsUrl}/42/classification`);
+    expect(classificationRequests.length).toBe(0);
+
+    // Flush the assignment to clean up.
+    httpMock.expectOne(`${requestsUrl}/42/assignment`).flush(assignedToAgentInProgress);
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  it('classification submission is blocked while a status save is in flight', () => {
+    createFixture('SupportAgent', 4);
+    fixture.detectChanges();
+    flushDetails(assignedToAgentInProgress, [], [], []);
+    fixture.detectChanges();
+
+    const resolveButton: HTMLButtonElement = Array.from(
+      fixture.nativeElement.querySelectorAll('.request-details-page__status-actions button'),
+    ).find((b) => (b as HTMLButtonElement).textContent?.trim() === 'Resolve') as HTMLButtonElement;
+    resolveButton.click();
+
+    // Status is in-flight; now try classification — it must be blocked.
+    fixture.nativeElement.querySelector('form[aria-label="Edit classification"] button[type="submit"]').click();
+
+    const classificationRequests = httpMock.match(`${requestsUrl}/42/classification`);
+    expect(classificationRequests.length).toBe(0);
+
+    httpMock.expectOne(`${requestsUrl}/42/status`).flush({ ...assignedToAgentInProgress, status: 'Resolved' });
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  // History text for classification actions
+
+  it('renders a friendly description for CategoryChanged history', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    flushDetails(testDetails, [
+      {
+        id: 10,
+        action: 'CategoryChanged',
+        previousValue: '1',
+        newValue: '2',
+        previousDisplayValue: 'Hardware',
+        newDisplayValue: 'Software',
+        changedBy: { id: 1, displayName: 'Root Admin' },
+        createdAt: '2026-01-02T00:00:00Z',
+      },
+    ]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Category changed from Hardware to Software');
+  });
+
+  it('renders a friendly description for PriorityChanged history', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    flushDetails(testDetails, [
+      {
+        id: 11,
+        action: 'PriorityChanged',
+        previousValue: 'Low',
+        newValue: 'Critical',
+        previousDisplayValue: 'Low',
+        newDisplayValue: 'Critical',
+        changedBy: { id: 1, displayName: 'Root Admin' },
+        createdAt: '2026-01-02T00:00:00Z',
+      },
+    ]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Priority changed from Low to Critical');
+  });
+
+  it('falls back to raw values when display values are missing', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    flushDetails(testDetails, [
+      {
+        id: 12,
+        action: 'CategoryChanged',
+        previousValue: '1',
+        newValue: '99',
+        previousDisplayValue: null,
+        newDisplayValue: null,
+        changedBy: { id: 1, displayName: 'Root Admin' },
+        createdAt: '2026-01-02T00:00:00Z',
+      },
+    ]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Category changed from');
   });
 });

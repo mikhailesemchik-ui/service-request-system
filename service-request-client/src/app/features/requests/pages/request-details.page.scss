@@ -180,21 +180,25 @@
     font-size: 0.875rem;
   }
 
-  textarea {
+  textarea,
+  select {
     padding: 0.5rem;
     border: 1px solid #98a2b3;
     border-radius: 0.25rem;
     font-size: 0.9rem;
-    resize: vertical;
     font-family: inherit;
+
+    &[aria-invalid='true'] {
+      border-color: #f04438;
+    }
+  }
+
+  textarea {
+    resize: vertical;
 
     &:focus {
       outline: 2px solid #0ba5ec;
       outline-offset: 1px;
-    }
-
-    &[aria-invalid='true'] {
-      border-color: #f04438;
     }
   }
 }
@@ -226,6 +230,17 @@
   margin: 0;
   font-size: 0.875rem;
   color: #027a48;
+}
+
+.request-details-page__classification-form {
+  max-width: 28rem;
+}
+
+
+.request-details-page__classification-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .request-details-page__history {

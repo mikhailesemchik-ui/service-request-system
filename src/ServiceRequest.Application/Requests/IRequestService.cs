@@ -49,4 +49,10 @@ public interface IRequestService
         CreateCommentRequest request,
         AuthenticatedUserDto currentUser,
         CancellationToken cancellationToken);
+
+    Task<RequestDetailsDto> UpdateClassificationAsync(
+        int requestId,
+        UpdateRequestClassificationRequest request,
+        AuthenticatedUserDto currentUser,
+        CancellationToken cancellationToken);
 }

@@ -111,6 +111,11 @@ export interface CreateCommentPayload {
   isInternal: boolean;
 }
 
+export interface UpdateRequestClassificationPayload {
+  categoryId: number;
+  priority: RequestPriority;
+}
+
 export const REQUESTS_PATH = '/api/requests';
 
 export const REQUEST_ASSIGNEES_PATH = '/api/request-assignees';

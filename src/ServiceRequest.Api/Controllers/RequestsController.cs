@@ -168,6 +168,30 @@ public sealed class RequestsController : ControllerBase
         return Ok(comments);
     }
 
+    [HttpPatch("{requestId}/classification")]
+    [Authorize(Policy = "CanManageRequests")]
+    [ProducesResponseType(typeof(RequestDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<RequestDetailsDto>> UpdateClassification(
+        [Range(1, int.MaxValue, ErrorMessage = "Request id must be greater than zero.")] int requestId,
+        [FromBody] UpdateRequestClassificationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = await _currentUserService.GetCurrentUserAsync(User, cancellationToken);
+
+        if (currentUser is null)
+        {
+            return Unauthorized();
+        }
+
+        var details = await _requestService.UpdateClassificationAsync(requestId, request, currentUser, cancellationToken);
+        return Ok(details);
+    }
+
     [HttpPost("{requestId}/comments")]
     [ProducesResponseType(typeof(RequestCommentDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

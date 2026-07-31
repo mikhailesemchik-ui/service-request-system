@@ -457,4 +457,120 @@ public class SupportRequestTests
 
         Assert.True(request.UpdatedAt > updatedAtBefore);
     }
+
+    // ChangeCategory
+
+    [Fact]
+    public void ChangeCategory_WhenNull_ThrowsArgumentNullException()
+    {
+        var request = CreateRequest();
+
+        Assert.Throws<ArgumentNullException>(() => request.ChangeCategory(null!));
+    }
+
+    // Changing to a genuinely different category requires two distinct, persisted category IDs
+    // (every unsaved RequestCategory in a pure domain test defaults to Id 0), so that scenario
+    // is covered at the integration level instead (RequestClassificationServiceTests).
+
+    [Fact]
+    public void ChangeCategory_SameCategory_IsNoOp()
+    {
+        var original = CreateCategory();
+        var request = new SupportRequest("Title", "Description", RequestPriority.Medium, original, CreateUser());
+
+        var changed = request.ChangeCategory(original);
+
+        Assert.False(changed);
+        Assert.Same(original, request.Category);
+    }
+
+    [Fact]
+    public void ChangeCategory_WhenClosed_ThrowsRequestClassificationLockedException()
+    {
+        var request = CreateRequestInStatus(RequestStatus.Closed);
+
+        Assert.Throws<RequestClassificationLockedException>(() => request.ChangeCategory(new RequestCategory("Other", "Other")));
+    }
+
+    [Fact]
+    public void ChangeCategory_WhenCancelled_ThrowsRequestClassificationLockedException()
+    {
+        var request = CreateRequestInStatus(RequestStatus.Cancelled);
+
+        Assert.Throws<RequestClassificationLockedException>(() => request.ChangeCategory(new RequestCategory("Other", "Other")));
+    }
+
+    [Fact]
+    public void ChangeCategory_NoOp_DoesNotChangeUpdatedAt()
+    {
+        var original = CreateCategory();
+        var request = new SupportRequest("Title", "Description", RequestPriority.Medium, original, CreateUser());
+        var updatedAtBefore = request.UpdatedAt;
+
+        request.ChangeCategory(original);
+
+        Assert.Equal(updatedAtBefore, request.UpdatedAt);
+    }
+
+    // ChangePriority
+
+    [Fact]
+    public void ChangePriority_DifferentPriority_UpdatesPriorityAndReturnsTrue()
+    {
+        var request = new SupportRequest("Title", "Description", RequestPriority.Low, CreateCategory(), CreateUser());
+
+        var changed = request.ChangePriority(RequestPriority.High);
+
+        Assert.True(changed);
+        Assert.Equal(RequestPriority.High, request.Priority);
+    }
+
+    [Fact]
+    public void ChangePriority_SamePriority_IsNoOp()
+    {
+        var request = new SupportRequest("Title", "Description", RequestPriority.Medium, CreateCategory(), CreateUser());
+
+        var changed = request.ChangePriority(RequestPriority.Medium);
+
+        Assert.False(changed);
+        Assert.Equal(RequestPriority.Medium, request.Priority);
+    }
+
+    [Fact]
+    public void ChangePriority_WhenClosed_ThrowsRequestClassificationLockedException()
+    {
+        var request = CreateRequestInStatus(RequestStatus.Closed);
+
+        Assert.Throws<RequestClassificationLockedException>(() => request.ChangePriority(RequestPriority.High));
+    }
+
+    [Fact]
+    public void ChangePriority_WhenCancelled_ThrowsRequestClassificationLockedException()
+    {
+        var request = CreateRequestInStatus(RequestStatus.Cancelled);
+
+        Assert.Throws<RequestClassificationLockedException>(() => request.ChangePriority(RequestPriority.High));
+    }
+
+    [Fact]
+    public void ChangePriority_ActualMutation_ChangesUpdatedAt()
+    {
+        var request = new SupportRequest("Title", "Description", RequestPriority.Low, CreateCategory(), CreateUser());
+        var updatedAtBefore = request.UpdatedAt;
+
+        request.ChangePriority(RequestPriority.High);
+
+        Assert.True(request.UpdatedAt > updatedAtBefore);
+    }
+
+    [Fact]
+    public void ChangePriority_NoOp_DoesNotChangeUpdatedAt()
+    {
+        var request = new SupportRequest("Title", "Description", RequestPriority.Medium, CreateCategory(), CreateUser());
+        var updatedAtBefore = request.UpdatedAt;
+
+        request.ChangePriority(RequestPriority.Medium);
+
+        Assert.Equal(updatedAtBefore, request.UpdatedAt);
+    }
 }

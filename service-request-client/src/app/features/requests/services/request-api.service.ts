@@ -16,6 +16,7 @@ import {
   RequestListItem,
   RequestListQuery,
   UpdateRequestAssignmentPayload,
+  UpdateRequestClassificationPayload,
   UpdateRequestStatusPayload,
 } from '../models/request.models';
 
@@ -75,5 +76,9 @@ export class RequestApiService {
 
   addComment(requestId: number, payload: CreateCommentPayload): Observable<RequestComment> {
     return this.http.post<RequestComment>(`${this.baseUrl}/${requestId}/comments`, payload);
+  }
+
+  updateClassification(requestId: number, payload: UpdateRequestClassificationPayload): Observable<RequestDetails> {
+    return this.http.patch<RequestDetails>(`${this.baseUrl}/${requestId}/classification`, payload);
   }
 }

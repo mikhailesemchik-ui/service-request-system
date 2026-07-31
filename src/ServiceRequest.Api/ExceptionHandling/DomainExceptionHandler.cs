@@ -31,6 +31,8 @@ public sealed class DomainExceptionHandler : IExceptionHandler
             RequestAssigneeNotFoundException => ((int?)StatusCodes.Status404NotFound, "Assignee not found"),
             RequestCommentsClosedException => ((int?)StatusCodes.Status409Conflict, "Request is closed"),
             InternalCommentForbiddenException => ((int?)StatusCodes.Status403Forbidden, "Forbidden"),
+            RequestClassificationForbiddenException => ((int?)StatusCodes.Status403Forbidden, "Forbidden"),
+            RequestClassificationLockedException => ((int?)StatusCodes.Status409Conflict, "Request cannot be modified"),
             _ => (null, null),
         };
 

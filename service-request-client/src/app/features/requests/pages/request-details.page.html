@@ -134,6 +134,91 @@
         </section>
       }
 
+      @if (isStaff()) {
+        <section class="request-details-page__section" aria-labelledby="classification-heading">
+          <h2 id="classification-heading">Request classification</h2>
+
+          <dl class="request-details-page__meta">
+            <div>
+              <dt>Category</dt>
+              <dd>{{ details.category.name }}</dd>
+            </div>
+            <div>
+              <dt>Priority</dt>
+              <dd>{{ details.priority }}</dd>
+            </div>
+          </dl>
+
+          @if (canEditClassification()) {
+            @if (isCategoriesLoading()) {
+              <p class="request-details-page__status" role="status">Loading categories…</p>
+            } @else if (categoriesError() !== null) {
+              <div class="request-details-page__status" role="alert">
+                <p>{{ categoriesError() }}</p>
+                <button type="button" (click)="retryCategories()">Retry</button>
+              </div>
+            } @else {
+              <form
+                class="request-details-page__comment-form request-details-page__classification-form"
+                [formGroup]="classificationForm"
+                (ngSubmit)="submitClassification()"
+                aria-label="Edit classification"
+              >
+                <div class="request-details-page__comment-form-field">
+                  <label for="classification-category">Category</label>
+                  <select
+                    id="classification-category"
+                    formControlName="categoryId"
+                                       [attr.aria-invalid]="
+                      classificationForm.controls.categoryId.invalid &&
+                      classificationForm.controls.categoryId.touched
+                        ? 'true'
+                        : null
+                    "
+                  >
+                    <option [value]="0" disabled>Select a category</option>
+                    @for (category of categories(); track category.id) {
+                      <option [value]="category.id">{{ category.name }}</option>
+                    }
+                  </select>
+                  @if (
+                    classificationForm.controls.categoryId.touched &&
+                    classificationForm.controls.categoryId.errors?.['min']
+                  ) {
+                    <p class="request-details-page__field-error" role="alert">Please select a category.</p>
+                  }
+                </div>
+
+                <div class="request-details-page__comment-form-field">
+                  <label for="classification-priority">Priority</label>
+                  <select id="classification-priority" formControlName="priority" class="request-details-page__classification-select">
+                    @for (p of priorityOptions; track p) {
+                      <option [value]="p">{{ p }}</option>
+                    }
+                  </select>
+                </div>
+
+                @if (classificationError(); as message) {
+                  <p class="request-details-page__error" role="alert">{{ message }}</p>
+                }
+                @if (classificationSuccess()) {
+                  <p class="request-details-page__comment-success" role="status">Classification updated.</p>
+                }
+
+                <div class="request-details-page__classification-actions">
+                  <button type="submit" [disabled]="isClassificationSaving() || isAssignmentSaving() || isStatusSaving() || classificationForm.invalid">
+                    {{ isClassificationSaving() ? 'Saving…' : 'Save changes' }}
+                  </button>
+                  <button type="button" (click)="resetClassification()" [disabled]="isClassificationSaving()">
+                    Reset
+                  </button>
+                </div>
+              </form>
+            }
+          }
+        </section>
+      }
+
       @if (statusOptions().length > 0) {
         <section class="request-details-page__section" aria-labelledby="status-heading">
           <h2 id="status-heading">Actions</h2>

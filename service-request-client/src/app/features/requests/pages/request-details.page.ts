@@ -6,6 +6,8 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ProblemDetails } from '../../../core/auth/auth.models';
 import { AuthService } from '../../../core/auth/auth.service';
+import { Category } from '../../categories/models/category.models';
+import { CategoryApiService } from '../../categories/services/category-api.service';
 import {
   availableStatusTransitions,
   canAssignToSelf,
@@ -13,10 +15,12 @@ import {
   canRemoveOwnAssignment,
 } from '../requests-status-transitions';
 import {
+  REQUEST_PRIORITIES,
   RequestAssignee,
   RequestComment,
   RequestDetails,
   RequestHistoryItem,
+  RequestPriority,
   RequestStatus,
 } from '../models/request.models';
 import { RequestApiService } from '../services/request-api.service';
@@ -26,9 +30,11 @@ const LOAD_ERROR_FALLBACK = 'Unable to load this request. Please try again.';
 const HISTORY_ERROR_FALLBACK = 'Unable to load history. Please try again.';
 const COMMENTS_ERROR_FALLBACK = 'Unable to load comments. Please try again.';
 const ASSIGNEES_ERROR_FALLBACK = 'Unable to load eligible assignees. Please try again.';
+const CATEGORIES_ERROR_FALLBACK = 'Unable to load categories. Please try again.';
 const ASSIGNMENT_ERROR_FALLBACK = 'Unable to update the assignment. Please try again.';
 const STATUS_ERROR_FALLBACK = 'Unable to update the status. Please try again.';
 const COMMENT_SUBMIT_ERROR_FALLBACK = 'Unable to submit the comment. Please try again.';
+const CLASSIFICATION_ERROR_FALLBACK = 'Unable to update the classification. Please try again.';
 const SERVICE_UNAVAILABLE_MESSAGE = 'Unable to reach the server. Please check your connection and try again.';
 const PERMISSION_DENIED_MESSAGE = 'You do not have permission to perform this action.';
 const INVALID_ID_MESSAGE = 'This request could not be found.';
@@ -55,6 +61,7 @@ const CLOSED_STATUSES: readonly RequestStatus[] = ['Closed', 'Cancelled'];
 })
 export class RequestDetailsPageComponent {
   private readonly requestApi = inject(RequestApiService);
+  private readonly categoryApi = inject(CategoryApiService);
   private readonly authService = inject(AuthService);
   private readonly activatedRoute = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -62,6 +69,7 @@ export class RequestDetailsPageComponent {
   private readonly fb = inject(FormBuilder);
 
   protected readonly statusLabels = STATUS_LABELS;
+  protected readonly priorityOptions = REQUEST_PRIORITIES;
 
   protected readonly request = signal<RequestDetails | null>(null);
   protected readonly isLoading = signal(true);
@@ -93,6 +101,19 @@ export class RequestDetailsPageComponent {
   protected readonly commentForm = this.fb.nonNullable.group({
     content: ['', [Validators.required, Validators.maxLength(4000)]],
     isInternal: [false],
+  });
+
+  protected readonly categories = signal<Category[] | null>(null);
+  protected readonly isCategoriesLoading = signal(false);
+  protected readonly categoriesError = signal<string | null>(null);
+
+  protected readonly isClassificationSaving = signal(false);
+  protected readonly classificationError = signal<string | null>(null);
+  protected readonly classificationSuccess = signal(false);
+
+  protected readonly classificationForm = this.fb.nonNullable.group({
+    categoryId: [0, [Validators.required, Validators.min(1)]],
+    priority: ['' as RequestPriority, [Validators.required]],
   });
 
   protected readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
@@ -149,6 +170,26 @@ export class RequestDetailsPageComponent {
     return request !== null && !CLOSED_STATUSES.includes(request.status);
   });
 
+  protected readonly canEditClassification = computed(() => {
+    const request = this.request();
+    const role = this.currentUserRole();
+    const userId = this.currentUserId();
+
+    if (!request || !role || CLOSED_STATUSES.includes(request.status)) {
+      return false;
+    }
+
+    if (role === 'Admin') {
+      return true;
+    }
+
+    if (role === 'SupportAgent') {
+      return request.assignedTo?.id === userId;
+    }
+
+    return false;
+  });
+
   constructor() {
     this.loadRequest();
   }
@@ -167,6 +208,50 @@ export class RequestDetailsPageComponent {
 
   protected retryAssignees(): void {
     this.loadEligibleAssignees();
+  }
+
+  protected retryCategories(): void {
+    this.loadCategories();
+  }
+
+  protected submitClassification(): void {
+    const request = this.request();
+    if (!request || this.isClassificationSaving() || this.isAssignmentSaving() || this.isStatusSaving() || this.classificationForm.invalid) {
+      return;
+    }
+
+    const { categoryId, priority } = this.classificationForm.getRawValue();
+
+    this.isClassificationSaving.set(true);
+    this.classificationError.set(null);
+    this.classificationSuccess.set(false);
+
+    this.requestApi
+      .updateClassification(request.id, { categoryId, priority })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (updated) => {
+          this.isClassificationSaving.set(false);
+          this.classificationSuccess.set(true);
+          this.request.set(updated);
+          this.resetClassificationForm(updated);
+          this.loadHistory();
+        },
+        error: (error: unknown) => {
+          this.isClassificationSaving.set(false);
+          this.classificationError.set(this.resolveErrorMessage(error, CLASSIFICATION_ERROR_FALLBACK));
+        },
+      });
+  }
+
+  protected resetClassification(): void {
+    const request = this.request();
+    if (request) {
+      this.resetClassificationForm(request);
+    }
+
+    this.classificationError.set(null);
+    this.classificationSuccess.set(false);
   }
 
   protected backToList(): void {
@@ -254,7 +339,7 @@ export class RequestDetailsPageComponent {
 
   private submitAssignment(assignedToUserId: number | null): void {
     const request = this.request();
-    if (!request || this.isAssignmentSaving() || this.isStatusSaving()) {
+    if (!request || this.isAssignmentSaving() || this.isStatusSaving() || this.isClassificationSaving()) {
       return;
     }
 
@@ -280,7 +365,7 @@ export class RequestDetailsPageComponent {
 
   private submitStatusChange(status: RequestStatus): void {
     const request = this.request();
-    if (!request || this.isStatusSaving() || this.isAssignmentSaving()) {
+    if (!request || this.isStatusSaving() || this.isAssignmentSaving() || this.isClassificationSaving()) {
       return;
     }
 
@@ -323,9 +408,13 @@ export class RequestDetailsPageComponent {
         next: (request) => {
           this.isLoading.set(false);
           this.request.set(request);
+          this.resetClassificationForm(request);
           this.loadHistory();
           this.loadComments();
           this.loadEligibleAssignees();
+          if (this.isStaff()) {
+            this.loadCategories();
+          }
         },
         error: (error: unknown) => {
           this.isLoading.set(false);
@@ -398,6 +487,32 @@ export class RequestDetailsPageComponent {
       });
   }
 
+  private loadCategories(): void {
+    this.isCategoriesLoading.set(true);
+    this.categoriesError.set(null);
+
+    this.categoryApi
+      .getCategories(false)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (categories) => {
+          this.isCategoriesLoading.set(false);
+          this.categories.set(categories);
+        },
+        error: (error: unknown) => {
+          this.isCategoriesLoading.set(false);
+          this.categoriesError.set(this.resolveErrorMessage(error, CATEGORIES_ERROR_FALLBACK));
+        },
+      });
+  }
+
+  private resetClassificationForm(request: RequestDetails): void {
+    this.classificationForm.reset({
+      categoryId: request.category.id,
+      priority: request.priority,
+    });
+  }
+
   protected historyDescription(entry: RequestHistoryItem): string {
     if (entry.action === 'StatusChanged') {
       return `Status changed from ${entry.previousDisplayValue} to ${entry.newDisplayValue}`;
@@ -413,6 +528,14 @@ export class RequestDetailsPageComponent {
       }
 
       return 'Assignment removed';
+    }
+
+    if (entry.action === 'CategoryChanged') {
+      return `Category changed from ${entry.previousDisplayValue} to ${entry.newDisplayValue}`;
+    }
+
+    if (entry.action === 'PriorityChanged') {
+      return `Priority changed from ${entry.previousDisplayValue} to ${entry.newDisplayValue}`;
     }
 
     return entry.action;
