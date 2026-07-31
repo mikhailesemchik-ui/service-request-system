@@ -147,4 +147,47 @@ public sealed class RequestsController : ControllerBase
         var history = await _requestService.GetHistoryAsync(requestId, currentUser, cancellationToken);
         return Ok(history);
     }
+
+    [HttpGet("{requestId}/comments")]
+    [ProducesResponseType(typeof(IReadOnlyList<RequestCommentDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<RequestCommentDto>>> GetComments(
+        [Range(1, int.MaxValue, ErrorMessage = "Request id must be greater than zero.")] int requestId,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = await _currentUserService.GetCurrentUserAsync(User, cancellationToken);
+
+        if (currentUser is null)
+        {
+            return Unauthorized();
+        }
+
+        var comments = await _requestService.GetCommentsAsync(requestId, currentUser, cancellationToken);
+        return Ok(comments);
+    }
+
+    [HttpPost("{requestId}/comments")]
+    [ProducesResponseType(typeof(RequestCommentDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<RequestCommentDto>> AddComment(
+        [Range(1, int.MaxValue, ErrorMessage = "Request id must be greater than zero.")] int requestId,
+        [FromBody] CreateCommentRequest request,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = await _currentUserService.GetCurrentUserAsync(User, cancellationToken);
+
+        if (currentUser is null)
+        {
+            return Unauthorized();
+        }
+
+        var comment = await _requestService.AddCommentAsync(requestId, request, currentUser, cancellationToken);
+        return CreatedAtAction(nameof(GetComments), new { requestId }, comment);
+    }
 }

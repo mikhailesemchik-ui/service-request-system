@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ProblemDetails } from '../../../core/auth/auth.models';
 import { AuthService } from '../../../core/auth/auth.service';
@@ -13,6 +14,7 @@ import {
 } from '../requests-status-transitions';
 import {
   RequestAssignee,
+  RequestComment,
   RequestDetails,
   RequestHistoryItem,
   RequestStatus,
@@ -22,9 +24,11 @@ import { RequestApiService } from '../services/request-api.service';
 const NOT_FOUND_MESSAGE = 'This request does not exist or is not available to you.';
 const LOAD_ERROR_FALLBACK = 'Unable to load this request. Please try again.';
 const HISTORY_ERROR_FALLBACK = 'Unable to load history. Please try again.';
+const COMMENTS_ERROR_FALLBACK = 'Unable to load comments. Please try again.';
 const ASSIGNEES_ERROR_FALLBACK = 'Unable to load eligible assignees. Please try again.';
 const ASSIGNMENT_ERROR_FALLBACK = 'Unable to update the assignment. Please try again.';
 const STATUS_ERROR_FALLBACK = 'Unable to update the status. Please try again.';
+const COMMENT_SUBMIT_ERROR_FALLBACK = 'Unable to submit the comment. Please try again.';
 const SERVICE_UNAVAILABLE_MESSAGE = 'Unable to reach the server. Please check your connection and try again.';
 const PERMISSION_DENIED_MESSAGE = 'You do not have permission to perform this action.';
 const INVALID_ID_MESSAGE = 'This request could not be found.';
@@ -40,10 +44,12 @@ const STATUS_LABELS: Record<RequestStatus, string> = {
 
 const CONFIRMATION_REQUIRED_STATUSES: readonly RequestStatus[] = ['Cancelled', 'Closed'];
 
+const CLOSED_STATUSES: readonly RequestStatus[] = ['Closed', 'Cancelled'];
+
 @Component({
   selector: 'app-request-details-page',
   standalone: true,
-  imports: [DatePipe],
+  imports: [DatePipe, ReactiveFormsModule],
   templateUrl: './request-details.page.html',
   styleUrl: './request-details.page.scss',
 })
@@ -53,6 +59,7 @@ export class RequestDetailsPageComponent {
   private readonly activatedRoute = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly fb = inject(FormBuilder);
 
   protected readonly statusLabels = STATUS_LABELS;
 
@@ -63,6 +70,10 @@ export class RequestDetailsPageComponent {
   protected readonly history = signal<RequestHistoryItem[] | null>(null);
   protected readonly isHistoryLoading = signal(false);
   protected readonly historyError = signal<string | null>(null);
+
+  protected readonly comments = signal<RequestComment[] | null>(null);
+  protected readonly isCommentsLoading = signal(false);
+  protected readonly commentsError = signal<string | null>(null);
 
   protected readonly assignees = signal<RequestAssignee[] | null>(null);
   protected readonly assigneesError = signal<string | null>(null);
@@ -75,8 +86,22 @@ export class RequestDetailsPageComponent {
   protected readonly statusError = signal<string | null>(null);
   protected readonly confirmingStatus = signal<RequestStatus | null>(null);
 
+  protected readonly isCommentSubmitting = signal(false);
+  protected readonly commentSubmitError = signal<string | null>(null);
+  protected readonly commentSubmitSuccess = signal(false);
+
+  protected readonly commentForm = this.fb.nonNullable.group({
+    content: ['', [Validators.required, Validators.maxLength(4000)]],
+    isInternal: [false],
+  });
+
   protected readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
   protected readonly currentUserRole = computed(() => this.authService.currentUser()?.role ?? null);
+
+  protected readonly isStaff = computed(() => {
+    const role = this.currentUserRole();
+    return role === 'SupportAgent' || role === 'Admin';
+  });
 
   protected readonly canManageAssignment = computed(() => {
     const role = this.currentUserRole();
@@ -119,6 +144,11 @@ export class RequestDetailsPageComponent {
     });
   });
 
+  protected readonly canAddComment = computed(() => {
+    const request = this.request();
+    return request !== null && !CLOSED_STATUSES.includes(request.status);
+  });
+
   constructor() {
     this.loadRequest();
   }
@@ -129,6 +159,10 @@ export class RequestDetailsPageComponent {
 
   protected retryHistory(): void {
     this.loadHistory();
+  }
+
+  protected retryComments(): void {
+    this.loadComments();
   }
 
   protected retryAssignees(): void {
@@ -187,6 +221,35 @@ export class RequestDetailsPageComponent {
 
   protected cancelStatusConfirmation(): void {
     this.confirmingStatus.set(null);
+  }
+
+  protected submitComment(): void {
+    const request = this.request();
+    if (!request || this.isCommentSubmitting() || this.commentForm.invalid) {
+      return;
+    }
+
+    const { content, isInternal } = this.commentForm.getRawValue();
+
+    this.isCommentSubmitting.set(true);
+    this.commentSubmitError.set(null);
+    this.commentSubmitSuccess.set(false);
+
+    this.requestApi
+      .addComment(request.id, { content, isInternal })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.isCommentSubmitting.set(false);
+          this.commentSubmitSuccess.set(true);
+          this.commentForm.reset({ content: '', isInternal: false });
+          this.loadComments();
+        },
+        error: (error: unknown) => {
+          this.isCommentSubmitting.set(false);
+          this.commentSubmitError.set(this.resolveErrorMessage(error, COMMENT_SUBMIT_ERROR_FALLBACK));
+        },
+      });
   }
 
   private submitAssignment(assignedToUserId: number | null): void {
@@ -261,6 +324,7 @@ export class RequestDetailsPageComponent {
           this.isLoading.set(false);
           this.request.set(request);
           this.loadHistory();
+          this.loadComments();
           this.loadEligibleAssignees();
         },
         error: (error: unknown) => {
@@ -290,6 +354,30 @@ export class RequestDetailsPageComponent {
         error: (error: unknown) => {
           this.isHistoryLoading.set(false);
           this.historyError.set(this.resolveErrorMessage(error, HISTORY_ERROR_FALLBACK));
+        },
+      });
+  }
+
+  private loadComments(): void {
+    const request = this.request();
+    if (!request) {
+      return;
+    }
+
+    this.isCommentsLoading.set(true);
+    this.commentsError.set(null);
+
+    this.requestApi
+      .getComments(request.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (comments) => {
+          this.isCommentsLoading.set(false);
+          this.comments.set(comments);
+        },
+        error: (error: unknown) => {
+          this.isCommentsLoading.set(false);
+          this.commentsError.set(this.resolveErrorMessage(error, COMMENTS_ERROR_FALLBACK));
         },
       });
   }

@@ -3,12 +3,14 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import {
+  CreateCommentPayload,
   CreateRequestPayload,
   DEFAULT_PAGE_SIZE,
   PagedResult,
   REQUEST_ASSIGNEES_PATH,
   REQUESTS_PATH,
   RequestAssignee,
+  RequestComment,
   RequestDetails,
   RequestHistoryItem,
   RequestListItem,
@@ -65,5 +67,13 @@ export class RequestApiService {
 
   getEligibleAssignees(): Observable<RequestAssignee[]> {
     return this.http.get<RequestAssignee[]>(`${environment.apiBaseUrl}${REQUEST_ASSIGNEES_PATH}`);
+  }
+
+  getComments(requestId: number): Observable<RequestComment[]> {
+    return this.http.get<RequestComment[]>(`${this.baseUrl}/${requestId}/comments`);
+  }
+
+  addComment(requestId: number, payload: CreateCommentPayload): Observable<RequestComment> {
+    return this.http.post<RequestComment>(`${this.baseUrl}/${requestId}/comments`, payload);
   }
 }

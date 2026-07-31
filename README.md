@@ -32,14 +32,15 @@ service-request-system/
 ```
 
 The backend implements request-category management, service request creation,
-retrieval, assignment, status transitions, and history, plus a JWT-based
-authentication/authorization foundation (login, current-user endpoint, role
-policies). The Angular client implements the corresponding authentication
-foundation (login, session restoration, route guards, authenticated shell), a
-category management UI (view for all authenticated roles; create, edit, and
-activate/deactivate for Admin), and a service requests UI (list, create,
-details with assignment/status actions and history). Comments, attachments,
-request editing, and deletion are not yet implemented.
+retrieval, assignment, status transitions, history, and comments (public and
+internal), plus a JWT-based authentication/authorization foundation (login,
+current-user endpoint, role policies). The Angular client implements the
+corresponding authentication foundation (login, session restoration, route
+guards, authenticated shell), a category management UI (view for all
+authenticated roles; create, edit, and activate/deactivate for Admin), and a
+service requests UI (list, create, details with assignment/status actions,
+history, and comments). Attachments, request editing, and deletion are not yet
+implemented.
 
 ## Prerequisites
 
@@ -268,7 +269,24 @@ with the acting user, a timestamp, and both the raw stored value and a human-rea
 history entries. History and its triggering mutation are written in the same database
 operation, so a failed mutation never leaves behind an orphaned history row.
 
-Comments, attachments, request editing, and deletion are not implemented in this version.
+### Comments
+
+A request's details page includes a comment thread and a comment form
+(`GET /api/requests/{id}/comments`, `POST /api/requests/{id}/comments`), with
+visibility and authoring rights enforced entirely by the backend:
+
+- **Employee**: can view and add only public comments on their own requests.
+  Requesting comments on another user's request returns the same "not found"
+  response as a request that does not exist. Attempting to submit an internal
+  comment returns 403 Forbidden.
+- **SupportAgent** and **Admin**: can view both public and internal comments on
+  any request, and can submit comments of either type.
+- Internal comments are always excluded from the response body when the caller
+  is an Employee — they are never returned, not just hidden.
+- A closed or cancelled request's existing comments remain viewable, but adding
+  a new comment returns 409 Conflict.
+
+Editing and deleting comments are not implemented.
 
 ### Session storage decision
 

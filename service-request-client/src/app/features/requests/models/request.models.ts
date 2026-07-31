@@ -92,6 +92,25 @@ export interface RequestAssignee {
   role: 'SupportAgent' | 'Admin';
 }
 
+export interface RequestCommentAuthor {
+  id: number;
+  displayName: string;
+  role: string;
+}
+
+export interface RequestComment {
+  id: number;
+  content: string;
+  isInternal: boolean;
+  author: RequestCommentAuthor;
+  createdAt: string;
+}
+
+export interface CreateCommentPayload {
+  content: string;
+  isInternal: boolean;
+}
+
 export const REQUESTS_PATH = '/api/requests';
 
 export const REQUEST_ASSIGNEES_PATH = '/api/request-assignees';

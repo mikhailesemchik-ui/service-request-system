@@ -29,6 +29,8 @@ public sealed class DomainExceptionHandler : IExceptionHandler
             InvalidRequestAssigneeException => ((int?)StatusCodes.Status409Conflict, "Invalid assignee"),
             RequestManagementForbiddenException => ((int?)StatusCodes.Status403Forbidden, "Forbidden"),
             RequestAssigneeNotFoundException => ((int?)StatusCodes.Status404NotFound, "Assignee not found"),
+            RequestCommentsClosedException => ((int?)StatusCodes.Status409Conflict, "Request is closed"),
+            InternalCommentForbiddenException => ((int?)StatusCodes.Status403Forbidden, "Forbidden"),
             _ => (null, null),
         };
 

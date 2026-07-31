@@ -38,4 +38,15 @@ public interface IRequestService
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<RequestAssigneeDto>> GetEligibleAssigneesAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<RequestCommentDto>> GetCommentsAsync(
+        int requestId,
+        AuthenticatedUserDto currentUser,
+        CancellationToken cancellationToken);
+
+    Task<RequestCommentDto> AddCommentAsync(
+        int requestId,
+        CreateCommentRequest request,
+        AuthenticatedUserDto currentUser,
+        CancellationToken cancellationToken);
 }

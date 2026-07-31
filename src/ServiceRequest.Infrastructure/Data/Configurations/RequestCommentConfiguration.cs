@@ -16,6 +16,13 @@ public sealed class RequestCommentConfiguration : IEntityTypeConfiguration<Reque
             .HasMaxLength(4000)
             .IsRequired();
 
+        // See SupportRequestConfiguration.CreatedAt: SQLite's EF Core provider cannot translate
+        // ORDER BY on DateTimeOffset columns. CreatedAt is always UTC, so this round-trips losslessly.
+        builder.Property(comment => comment.CreatedAt)
+            .HasConversion(
+                toProvider => toProvider.UtcDateTime,
+                fromProvider => new DateTimeOffset(fromProvider, TimeSpan.Zero));
+
         builder.HasOne(comment => comment.SupportRequest)
             .WithMany()
             .HasForeignKey(comment => comment.ServiceRequestId)
@@ -28,5 +35,6 @@ public sealed class RequestCommentConfiguration : IEntityTypeConfiguration<Reque
 
         builder.HasIndex(comment => comment.ServiceRequestId);
         builder.HasIndex(comment => comment.AuthorUserId);
+        builder.HasIndex(comment => comment.CreatedAt);
     }
 }

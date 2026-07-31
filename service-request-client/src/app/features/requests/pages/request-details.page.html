@@ -170,6 +170,84 @@
         </section>
       }
 
+      <section class="request-details-page__section" aria-labelledby="comments-heading">
+        <h2 id="comments-heading">Comments</h2>
+
+        @if (isCommentsLoading()) {
+          <p class="request-details-page__status" role="status">Loading comments…</p>
+        } @else if (commentsError() !== null) {
+          <div class="request-details-page__status" role="alert">
+            <p>{{ commentsError() }}</p>
+            <button type="button" (click)="retryComments()">Retry</button>
+          </div>
+        } @else {
+          @if ((comments()?.length ?? 0) === 0) {
+            <p class="request-details-page__status">No comments yet.</p>
+          } @else {
+            <ul class="request-details-page__comments">
+              @for (comment of comments(); track comment.id) {
+                <li [class.request-details-page__comment--internal]="comment.isInternal">
+                  @if (comment.isInternal) {
+                    <span class="request-details-page__comment-badge">Internal note</span>
+                  }
+                  <p class="request-details-page__comment-content">{{ comment.content }}</p>
+                  <p class="request-details-page__comment-meta">
+                    {{ comment.author.displayName }} — {{ comment.createdAt | date: 'medium' }}
+                  </p>
+                </li>
+              }
+            </ul>
+          }
+
+          @if (canAddComment()) {
+            <form
+              class="request-details-page__comment-form"
+              [formGroup]="commentForm"
+              (ngSubmit)="submitComment()"
+              aria-label="Add a comment"
+            >
+              <div class="request-details-page__comment-form-field">
+                <label for="comment-content">Comment</label>
+                <textarea
+                  id="comment-content"
+                  formControlName="content"
+                  rows="3"
+                  placeholder="Write your comment here…"
+                  [attr.aria-invalid]="
+                    commentForm.controls.content.invalid && commentForm.controls.content.touched ? 'true' : null
+                  "
+                ></textarea>
+                @if (commentForm.controls.content.touched && commentForm.controls.content.errors?.['required']) {
+                  <p class="request-details-page__field-error" role="alert">Comment cannot be empty.</p>
+                } @else if (commentForm.controls.content.touched && commentForm.controls.content.errors?.['maxlength']) {
+                  <p class="request-details-page__field-error" role="alert">
+                    Comment cannot exceed 4000 characters.
+                  </p>
+                }
+              </div>
+
+              @if (isStaff()) {
+                <div class="request-details-page__comment-form-checkbox">
+                  <input id="comment-internal" type="checkbox" formControlName="isInternal" />
+                  <label for="comment-internal">Internal note (not visible to employees)</label>
+                </div>
+              }
+
+              @if (commentSubmitError(); as message) {
+                <p class="request-details-page__error" role="alert">{{ message }}</p>
+              }
+              @if (commentSubmitSuccess()) {
+                <p class="request-details-page__comment-success" role="status">Comment added successfully.</p>
+              }
+
+              <button type="submit" [disabled]="isCommentSubmitting() || commentForm.invalid">
+                {{ isCommentSubmitting() ? 'Submitting…' : 'Add comment' }}
+              </button>
+            </form>
+          }
+        }
+      </section>
+
       <section class="request-details-page__section" aria-labelledby="history-heading">
         <h2 id="history-heading">History</h2>
 

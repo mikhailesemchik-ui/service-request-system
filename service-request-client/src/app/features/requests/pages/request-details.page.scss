@@ -122,6 +122,112 @@
   color: #b54708;
 }
 
+.request-details-page__comments {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+
+  li {
+    padding: 0.75rem;
+    border: 1px solid #eaecf0;
+    border-radius: 0.25rem;
+  }
+}
+
+.request-details-page__comment--internal {
+  border-color: #b2ddff !important;
+  background: #f0f9ff;
+}
+
+.request-details-page__comment-badge {
+  display: inline-block;
+  margin-bottom: 0.4rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.25rem;
+  background: #0ba5ec;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.request-details-page__comment-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+
+.request-details-page__comment-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid #eaecf0;
+  border-radius: 0.5rem;
+}
+
+.request-details-page__comment-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+
+  label {
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+
+  textarea {
+    padding: 0.5rem;
+    border: 1px solid #98a2b3;
+    border-radius: 0.25rem;
+    font-size: 0.9rem;
+    resize: vertical;
+    font-family: inherit;
+
+    &:focus {
+      outline: 2px solid #0ba5ec;
+      outline-offset: 1px;
+    }
+
+    &[aria-invalid='true'] {
+      border-color: #f04438;
+    }
+  }
+}
+
+.request-details-page__comment-form-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+
+  input[type='checkbox'] {
+    width: 1rem;
+    height: 1rem;
+    cursor: pointer;
+  }
+
+  label {
+    cursor: pointer;
+  }
+}
+
+.request-details-page__field-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #b42318;
+}
+
+.request-details-page__comment-success {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #027a48;
+}
+
 .request-details-page__history {
   list-style: none;
   margin: 0;
@@ -142,6 +248,7 @@
   font-weight: 600;
 }
 
+.request-details-page__comment-meta,
 .request-details-page__history-meta {
   margin: 0.25rem 0 0;
   font-size: 0.8rem;

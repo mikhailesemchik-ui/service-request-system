@@ -5,7 +5,7 @@ import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angul
 import { environment } from '../../../../environments/environment';
 import { UserRole } from '../../../core/auth/auth.models';
 import { AuthService } from '../../../core/auth/auth.service';
-import { RequestAssignee, RequestDetails, RequestHistoryItem } from '../models/request.models';
+import { RequestAssignee, RequestComment, RequestDetails, RequestHistoryItem } from '../models/request.models';
 import { RequestDetailsPageComponent } from './request-details.page';
 
 const requestsUrl = `${environment.apiBaseUrl}/api/requests`;
@@ -85,9 +85,11 @@ describe('RequestDetailsPageComponent', () => {
     details: RequestDetails = testDetails,
     historyItems: RequestHistoryItem[] = [],
     assignees: RequestAssignee[] = [],
+    comments: RequestComment[] = [],
   ): void {
     httpMock.expectOne(`${requestsUrl}/42`).flush(details);
     httpMock.expectOne(`${requestsUrl}/42/history`).flush(historyItems);
+    httpMock.expectOne(`${requestsUrl}/42/comments`).flush(comments);
     if (currentRole === 'Admin') {
       httpMock.expectOne(requestAssigneesUrl).flush(assignees);
     }
@@ -167,6 +169,7 @@ describe('RequestDetailsPageComponent', () => {
     expect(req.request.method).toBe('GET');
     req.flush(testDetails);
     httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+    httpMock.expectOne(`${requestsUrl}/42/comments`).flush([]);
   });
 
   it('navigates back to the requests list', () => {
@@ -232,6 +235,7 @@ describe('RequestDetailsPageComponent', () => {
     fixture.detectChanges();
     httpMock.expectOne(`${requestsUrl}/42`).flush(unassignedNewRequest);
     httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+    httpMock.expectOne(`${requestsUrl}/42/comments`).flush([]);
 
     const req = httpMock.expectOne(requestAssigneesUrl);
     expect(req.request.method).toBe('GET');
@@ -491,6 +495,7 @@ describe('RequestDetailsPageComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Loading history');
 
     httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+    httpMock.expectOne(`${requestsUrl}/42/comments`).flush([]);
   });
 
   it('shows an empty state when there is no history', () => {
@@ -538,6 +543,7 @@ describe('RequestDetailsPageComponent', () => {
     fixture.detectChanges();
     httpMock.expectOne(`${requestsUrl}/42`).flush(testDetails);
     httpMock.expectOne(`${requestsUrl}/42/history`).flush(null, { status: 500, statusText: 'Server Error' });
+    httpMock.expectOne(`${requestsUrl}/42/comments`).flush([]);
     fixture.detectChanges();
 
     expect(fixture.nativeElement.textContent).toContain('Unable to load history. Please try again.');

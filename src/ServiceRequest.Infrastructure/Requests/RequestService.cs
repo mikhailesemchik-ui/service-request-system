@@ -298,6 +298,85 @@ public sealed class RequestService : IRequestService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<RequestCommentDto>> GetCommentsAsync(
+        int requestId,
+        AuthenticatedUserDto currentUser,
+        CancellationToken cancellationToken)
+    {
+        var requestQuery = _dbContext.SupportRequests.AsNoTracking().Where(r => r.Id == requestId);
+
+        if (!IsStaffRole(currentUser.Role))
+        {
+            requestQuery = requestQuery.Where(r => r.CreatedByUserId == currentUser.Id);
+        }
+
+        if (!await requestQuery.AnyAsync(cancellationToken))
+        {
+            throw new SupportRequestNotFoundException(requestId);
+        }
+
+        var commentsQuery = _dbContext.RequestComments
+            .AsNoTracking()
+            .Where(c => c.ServiceRequestId == requestId);
+
+        if (!IsStaffRole(currentUser.Role))
+        {
+            commentsQuery = commentsQuery.Where(c => !c.IsInternal);
+        }
+
+        return await commentsQuery
+            .OrderBy(c => c.CreatedAt)
+            .ThenBy(c => c.Id)
+            .Select(c => new RequestCommentDto(
+                c.Id,
+                c.Content,
+                c.IsInternal,
+                new RequestCommentAuthorDto(c.AuthorUser.Id, c.AuthorUser.DisplayName, c.AuthorUser.Role.ToString()),
+                c.CreatedAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<RequestCommentDto> AddCommentAsync(
+        int requestId,
+        CreateCommentRequest request,
+        AuthenticatedUserDto currentUser,
+        CancellationToken cancellationToken)
+    {
+        var requestQuery = _dbContext.SupportRequests.Where(r => r.Id == requestId);
+
+        if (!IsStaffRole(currentUser.Role))
+        {
+            requestQuery = requestQuery.Where(r => r.CreatedByUserId == currentUser.Id);
+        }
+
+        var supportRequest = await requestQuery.SingleOrDefaultAsync(cancellationToken)
+            ?? throw new SupportRequestNotFoundException(requestId);
+
+        if (supportRequest.Status is RequestStatus.Closed or RequestStatus.Cancelled)
+        {
+            throw new RequestCommentsClosedException(supportRequest.Status.ToString());
+        }
+
+        if (!IsStaffRole(currentUser.Role) && request.IsInternal)
+        {
+            throw new InternalCommentForbiddenException();
+        }
+
+        var author = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == currentUser.Id, cancellationToken)
+            ?? throw new CurrentUserUnavailableException();
+
+        var comment = new RequestComment(request.Content, request.IsInternal, supportRequest, author);
+        _dbContext.RequestComments.Add(comment);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new RequestCommentDto(
+            comment.Id,
+            comment.Content,
+            comment.IsInternal,
+            new RequestCommentAuthorDto(author.Id, author.DisplayName, author.Role.ToString()),
+            comment.CreatedAt);
+    }
+
     private Task<SupportRequest?> LoadTrackedRequestAsync(int requestId, CancellationToken cancellationToken) =>
         _dbContext.SupportRequests
             .Include(request => request.Category)
