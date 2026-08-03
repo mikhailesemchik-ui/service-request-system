@@ -8,8 +8,14 @@
   display: flex;
   align-items: center;
   gap: 1.5rem;
-  padding: 1rem 1.5rem;
+  padding: 0.875rem 1.5rem;
   border-bottom: 1px solid #d0d5dd;
+  background: #fff;
+
+  @media (prefers-color-scheme: dark) {
+    background: #111827;
+    border-bottom-color: #374151;
+  }
 }
 
 .app-shell__title {
@@ -18,17 +24,24 @@
 
 .app-shell__nav {
   display: flex;
-  gap: 1rem;
+  gap: 1.25rem;
   flex: 1;
 
   a {
     color: inherit;
     text-decoration: none;
     padding: 0.25rem 0;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+
+    &:hover {
+      opacity: 1;
+    }
   }
 
   a.is-active {
     font-weight: 600;
+    opacity: 1;
     border-bottom: 2px solid #1570ef;
   }
 }

@@ -1423,7 +1423,7 @@ describe('RequestDetailsPageComponent', () => {
     ]);
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('Title changed from �Old title� to �New title�');
+    expect(fixture.nativeElement.textContent).toContain('Title changed from "Old title" to "New title"');
     expect(fixture.nativeElement.textContent).toContain('Description updated');
   });
 

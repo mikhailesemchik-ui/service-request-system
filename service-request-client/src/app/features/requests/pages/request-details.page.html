@@ -11,16 +11,19 @@
   } @else if (request() !== null) {
     @let details = request()!;
     <article>
-      <h1>{{ details.title }}</h1>
+      <header class="request-details-page__header">
+        <span class="request-details-page__id">#{{ details.id }}</span>
+        <h1>{{ details.title }}</h1>
+      </header>
 
       <dl class="request-details-page__meta">
         <div>
           <dt>Status</dt>
-          <dd>{{ details.status }}</dd>
+          <dd><span class="badge badge--status badge--{{ details.status.toLowerCase() }}">{{ details.status }}</span></dd>
         </div>
         <div>
           <dt>Priority</dt>
-          <dd>{{ details.priority }}</dd>
+          <dd><span class="badge badge--priority badge--{{ details.priority.toLowerCase() }}">{{ details.priority }}</span></dd>
         </div>
         <div>
           <dt>Category</dt>
@@ -63,10 +66,9 @@
       </dl>
 
       <section class="request-details-page__section request-details-page__content" aria-labelledby="content-heading">
-        <h2 id="content-heading">Request content</h2>
+        <h2 id="content-heading">Description</h2>
 
         <div class="request-details-page__content-display">
-          <h3>{{ details.title }}</h3>
           <p class="request-details-page__description">{{ details.description }}</p>
         </div>
 

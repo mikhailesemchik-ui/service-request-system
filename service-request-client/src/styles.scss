@@ -1,1 +1,47 @@
-/* You can add global styles to this file, and also import other style files */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #101828;
+  background: #f9fafb;
+
+  @media (prefers-color-scheme: dark) {
+    color: #f9fafb;
+    background: #111827;
+  }
+}
+
+a {
+  color: #1570ef;
+}
+
+button {
+  font-family: inherit;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge--status { background: #eef4ff; color: #1570ef; }
+.badge--status.badge--inprogress { background: #ecfdf3; color: #027a48; }
+.badge--status.badge--waitingforuser { background: #fffaeb; color: #b54708; }
+.badge--status.badge--resolved { background: #f0fdf4; color: #15803d; }
+.badge--status.badge--closed { background: #f9fafb; color: #344054; }
+.badge--status.badge--cancelled { background: #fef3f2; color: #b42318; }
+
+.badge--priority { background: #f2f4f7; color: #475467; }
+.badge--priority.badge--high { background: #fff4ed; color: #c4320a; }
+.badge--priority.badge--critical { background: #fef3f2; color: #b42318; }

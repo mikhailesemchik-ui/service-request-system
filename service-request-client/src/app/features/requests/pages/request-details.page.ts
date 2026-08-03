@@ -37,7 +37,6 @@ const STATUS_ERROR_FALLBACK = 'Unable to update the status. Please try again.';
 const COMMENT_SUBMIT_ERROR_FALLBACK = 'Unable to submit the comment. Please try again.';
 const CLASSIFICATION_ERROR_FALLBACK = 'Unable to update the classification. Please try again.';
 const CONTENT_ERROR_FALLBACK = 'Unable to update the request content. Please try again.';
-const CONTENT_LOCKED_MESSAGE = 'This request can no longer be edited.';
 const SERVICE_UNAVAILABLE_MESSAGE = 'Unable to reach the server. Please check your connection and try again.';
 const PERMISSION_DENIED_MESSAGE = 'You do not have permission to perform this action.';
 const INVALID_ID_MESSAGE = 'This request could not be found.';
@@ -645,6 +644,7 @@ export class RequestDetailsPageComponent {
     const trimmed = value?.trim();
     return trimmed && trimmed.length > 0 ? trimmed : 'unknown value';
   }
+
   protected historyDescription(entry: RequestHistoryItem): string {
     if (entry.action === 'StatusChanged') {
       return `Status changed from ${entry.previousDisplayValue} to ${entry.newDisplayValue}`;
@@ -667,7 +667,7 @@ export class RequestDetailsPageComponent {
     }
 
     if (entry.action === 'TitleChanged') {
-      return `Title changed from �${this.historyValue(entry.previousDisplayValue)}� to �${this.historyValue(entry.newDisplayValue)}�`;
+      return `Title changed from "${this.historyValue(entry.previousDisplayValue)}" to "${this.historyValue(entry.newDisplayValue)}"`;
     }
 
     if (entry.action === 'DescriptionChanged') {
@@ -693,11 +693,6 @@ export class RequestDetailsPageComponent {
 
       if (error.status === 404) {
         return NOT_FOUND_MESSAGE;
-      }
-
-      if (error.status === 409) {
-        const problemDetails = error.error as ProblemDetails | null;
-        return problemDetails?.detail ?? CONTENT_LOCKED_MESSAGE;
       }
 
       const problemDetails = error.error as ProblemDetails | null;
