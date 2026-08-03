@@ -4,10 +4,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ServiceRequest.Application.Authentication;
 using ServiceRequest.Application.Categories;
+using ServiceRequest.Application.Dashboard;
 using ServiceRequest.Application.Requests;
 using ServiceRequest.Domain.Entities;
 using ServiceRequest.Infrastructure.Authentication;
 using ServiceRequest.Infrastructure.Categories;
+using ServiceRequest.Infrastructure.Dashboard;
 using ServiceRequest.Infrastructure.Data;
 using ServiceRequest.Infrastructure.Requests;
 
@@ -24,6 +26,7 @@ public static class DependencyInjection
 
         services.AddScoped<IRequestCategoryService, RequestCategoryService>();
         services.AddScoped<IRequestService, RequestService>();
+        services.AddScoped<IDashboardService, DashboardService>();
 
         services.AddScoped<IPasswordHasher<ApplicationUser>, PasswordHasher<ApplicationUser>>();
         services.AddScoped<IAuthenticationService, AuthenticationService>();

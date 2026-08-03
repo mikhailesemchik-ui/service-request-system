@@ -1,6 +1,169 @@
-<section class="dashboard-page">
-  @if (authService.currentUser(); as user) {
-    <h1>Welcome, {{ user.displayName }}</h1>
-    <p>Role: {{ user.role }}</p>
+<main class="dashboard-page">
+  <h1 class="dashboard-page__heading">Dashboard</h1>
+
+  @if (isLoading()) {
+    <div class="dashboard-page__loading" role="status" aria-label="Loading dashboard statistics">
+      <span class="dashboard-page__spinner" aria-hidden="true"></span>
+      Loading dashboard statistics…
+    </div>
+  } @else if (loadError()) {
+    <div class="dashboard-page__error" role="alert">
+      <p>{{ loadError() }}</p>
+      <button type="button" class="dashboard-page__retry-btn" (click)="retry()">Try again</button>
+    </div>
+  } @else {
+    @if (summary(); as data) {
+      <p class="dashboard-page__scope-description">{{ scopeDescription() }}</p>
+
+      <!-- Primary overview metrics -->
+      <section class="dashboard-page__section" aria-labelledby="overview-heading">
+        <h2 id="overview-heading" class="dashboard-page__section-heading">Overview</h2>
+        <div class="dashboard-page__cards">
+          <div class="dashboard-page__card">
+            <span class="dashboard-page__card-value">{{ data.totalRequests }}</span>
+            <span class="dashboard-page__card-label">Total requests</span>
+          </div>
+          <div class="dashboard-page__card dashboard-page__card--accent">
+            <span class="dashboard-page__card-value">{{ data.openRequests }}</span>
+            <span class="dashboard-page__card-label">{{ openLabel() }}</span>
+          </div>
+          <div class="dashboard-page__card">
+            <span class="dashboard-page__card-value">{{ data.resolvedRequests }}</span>
+            <span class="dashboard-page__card-label">Resolved</span>
+          </div>
+          <div class="dashboard-page__card">
+            <span class="dashboard-page__card-value">{{ data.closedRequests }}</span>
+            <span class="dashboard-page__card-label">Closed</span>
+          </div>
+          <div class="dashboard-page__card">
+            <span class="dashboard-page__card-value">{{ data.cancelledRequests }}</span>
+            <span class="dashboard-page__card-label">Cancelled</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Staff operational metrics -->
+      @if (data.staffMetrics; as staff) {
+        <section class="dashboard-page__section" aria-labelledby="staff-heading">
+          <h2 id="staff-heading" class="dashboard-page__section-heading">Operational metrics</h2>
+          <div class="dashboard-page__cards">
+            <div class="dashboard-page__card">
+              <span class="dashboard-page__card-value">{{ staff.unassignedActiveRequests }}</span>
+              <span class="dashboard-page__card-label">Unassigned active</span>
+            </div>
+            <div class="dashboard-page__card">
+              <span class="dashboard-page__card-value">{{ staff.assignedToMe }}</span>
+              <span class="dashboard-page__card-label">Assigned to me</span>
+            </div>
+            <div class="dashboard-page__card dashboard-page__card--accent">
+              <span class="dashboard-page__card-value">{{ staff.activeAssignedToMe }}</span>
+              <span class="dashboard-page__card-label">Active assigned to me</span>
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- Admin organisation metrics -->
+      @if (data.adminMetrics; as admin) {
+        <section class="dashboard-page__section" aria-labelledby="admin-heading">
+          <h2 id="admin-heading" class="dashboard-page__section-heading">Organisation</h2>
+          <div class="dashboard-page__cards">
+            <div class="dashboard-page__card">
+              <span class="dashboard-page__card-value">{{ admin.activeCategories }}</span>
+              <span class="dashboard-page__card-label">Active categories</span>
+            </div>
+            <div class="dashboard-page__card">
+              <span class="dashboard-page__card-value">{{ admin.activeSupportAgents }}</span>
+              <span class="dashboard-page__card-label">Active support agents</span>
+            </div>
+            <div class="dashboard-page__card">
+              <span class="dashboard-page__card-value">{{ admin.activeAdmins }}</span>
+              <span class="dashboard-page__card-label">Active admins</span>
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- Status breakdown -->
+      <section class="dashboard-page__section" aria-labelledby="status-heading">
+        <h2 id="status-heading" class="dashboard-page__section-heading">Status breakdown</h2>
+        <ul class="dashboard-page__breakdown" aria-label="Requests by status">
+          @for (item of data.statusCounts; track item.status) {
+            <li class="dashboard-page__breakdown-item">
+              <span class="dashboard-page__breakdown-label">{{ statusLabel(item.status) }}</span>
+              <span class="dashboard-page__breakdown-bar-wrap" aria-hidden="true">
+                <span
+                  class="dashboard-page__breakdown-bar"
+                  [style.width.%]="data.totalRequests > 0 ? (item.count / data.totalRequests) * 100 : 0"
+                ></span>
+              </span>
+              <span class="dashboard-page__breakdown-count">{{ item.count }}</span>
+            </li>
+          }
+        </ul>
+      </section>
+
+      <!-- Priority breakdown -->
+      <section class="dashboard-page__section" aria-labelledby="priority-heading">
+        <h2 id="priority-heading" class="dashboard-page__section-heading">Priority breakdown</h2>
+        <ul class="dashboard-page__breakdown" aria-label="Requests by priority">
+          @for (item of data.priorityCounts; track item.priority) {
+            <li class="dashboard-page__breakdown-item">
+              <span class="dashboard-page__breakdown-label">{{ priorityLabel(item.priority) }}</span>
+              <span class="dashboard-page__breakdown-bar-wrap" aria-hidden="true">
+                <span
+                  class="dashboard-page__breakdown-bar"
+                  [style.width.%]="data.totalRequests > 0 ? (item.count / data.totalRequests) * 100 : 0"
+                ></span>
+              </span>
+              <span class="dashboard-page__breakdown-count">{{ item.count }}</span>
+            </li>
+          }
+        </ul>
+      </section>
+
+      <!-- Recent requests -->
+      <section class="dashboard-page__section" aria-labelledby="recent-heading">
+        <h2 id="recent-heading" class="dashboard-page__section-heading">Recent requests</h2>
+        @if (data.recentRequests.length === 0) {
+          <p class="dashboard-page__empty">No recent requests to display.</p>
+        } @else {
+          <ul class="dashboard-page__recent" aria-label="Recently updated requests">
+            @for (req of data.recentRequests; track req.id) {
+              <li class="dashboard-page__recent-item">
+                <a
+                  class="dashboard-page__recent-link"
+                  [routerLink]="['/requests', req.id]"
+                  [attr.aria-label]="'Open request ' + req.id + ': ' + req.title"
+                >
+                  <span class="dashboard-page__recent-id">#{{ req.id }}</span>
+                  <span class="dashboard-page__recent-title">{{ req.title }}</span>
+                </a>
+                <dl class="dashboard-page__recent-meta">
+                  <dt class="dashboard-page__recent-meta-label">Status</dt>
+                  <dd class="dashboard-page__recent-meta-value">{{ statusLabel(req.status) }}</dd>
+                  <dt class="dashboard-page__recent-meta-label">Priority</dt>
+                  <dd class="dashboard-page__recent-meta-value">{{ priorityLabel(req.priority) }}</dd>
+                  <dt class="dashboard-page__recent-meta-label">Category</dt>
+                  <dd class="dashboard-page__recent-meta-value">{{ req.categoryName }}</dd>
+                  <dt class="dashboard-page__recent-meta-label">Assignee</dt>
+                  <dd class="dashboard-page__recent-meta-value">
+                    {{ req.assignedToDisplayName ?? 'Unassigned' }}
+                  </dd>
+                  @if (!isEmployee()) {
+                    <dt class="dashboard-page__recent-meta-label">Created by</dt>
+                    <dd class="dashboard-page__recent-meta-value">{{ req.createdByDisplayName }}</dd>
+                  }
+                  <dt class="dashboard-page__recent-meta-label">Updated</dt>
+                  <dd class="dashboard-page__recent-meta-value">
+                    {{ req.updatedAt | date: 'dd MMM yyyy, HH:mm' }}
+                  </dd>
+                </dl>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    }
   }
-</section>
+</main>
