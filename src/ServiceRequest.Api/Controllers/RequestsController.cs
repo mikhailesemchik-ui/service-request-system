@@ -192,6 +192,38 @@ public sealed class RequestsController : ControllerBase
         return Ok(details);
     }
 
+    /// <summary>Updates the title and description of a request.</summary>
+    /// <remarks>
+    /// Both title and description are required; this endpoint does not perform partial updates.
+    /// Title is trimmed and must contain 3-200 characters. Description is trimmed and must contain 1-4000 characters.
+    /// Employees can edit their own New requests only. Support agents can edit assigned non-terminal requests.
+    /// Admins can edit any non-terminal request. Closed and Cancelled requests cannot be edited.
+    /// </remarks>
+    [HttpPatch("{requestId}/content")]
+    [Consumes("application/json")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(RequestDetailsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<RequestDetailsDto>> UpdateContent(
+        [Range(1, int.MaxValue, ErrorMessage = "Request id must be greater than zero.")] int requestId,
+        [FromBody] UpdateRequestContentRequest request,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = await _currentUserService.GetCurrentUserAsync(User, cancellationToken);
+
+        if (currentUser is null)
+        {
+            return Unauthorized();
+        }
+
+        var details = await _requestService.UpdateContentAsync(requestId, request, currentUser, cancellationToken);
+        return Ok(details);
+    }
+
     [HttpPost("{requestId}/comments")]
     [ProducesResponseType(typeof(RequestCommentDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]

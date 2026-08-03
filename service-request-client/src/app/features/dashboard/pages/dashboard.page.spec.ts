@@ -143,6 +143,10 @@ describe('DashboardPageComponent', () => {
     fixture.detectChanges();
 
     flush(); // second request
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[role="alert"]')).toBeNull();
+    expect(el.querySelector('.dashboard-page__card-value')?.textContent?.trim()).toBe('0');
   });
 
   it('does not show stale metric values during initial loading', () => {

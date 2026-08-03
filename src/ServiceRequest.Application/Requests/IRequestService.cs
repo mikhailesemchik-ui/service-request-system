@@ -55,4 +55,10 @@ public interface IRequestService
         UpdateRequestClassificationRequest request,
         AuthenticatedUserDto currentUser,
         CancellationToken cancellationToken);
+
+    Task<RequestDetailsDto> UpdateContentAsync(
+        int requestId,
+        UpdateRequestContentRequest request,
+        AuthenticatedUserDto currentUser,
+        CancellationToken cancellationToken);
 }

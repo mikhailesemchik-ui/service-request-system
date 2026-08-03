@@ -1022,4 +1022,427 @@ describe('RequestDetailsPageComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('Category changed from');
   });
-});
+
+  function contentEditButton(): HTMLButtonElement | undefined {
+    return Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (button) => (button as HTMLButtonElement).textContent?.trim() === 'Edit',
+    ) as HTMLButtonElement | undefined;
+  }
+
+  function saveContentButton(): HTMLButtonElement {
+    return Array.from(fixture.nativeElement.querySelectorAll('form[aria-label="Edit request content"] button')).find(
+      (button) => (button as HTMLButtonElement).textContent?.trim() === 'Save',
+    ) as HTMLButtonElement;
+  }
+
+  function openContentEditor(details: RequestDetails = unassignedNewRequest, assignees: RequestAssignee[] = []): void {
+    flushDetails(details, [], assignees);
+    fixture.detectChanges();
+    contentEditButton()?.click();
+    fixture.detectChanges();
+  }
+
+  // Content edit visibility
+
+  it('Employee owner on a New request sees content Edit', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest);
+    fixture.detectChanges();
+
+    expect(contentEditButton()).toBeTruthy();
+  });
+
+  it('Employee on a non-New request does not see content Edit', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    flushDetails(testDetails);
+    fixture.detectChanges();
+
+    expect(contentEditButton()).toBeUndefined();
+  });
+
+  it('assigned SupportAgent sees content Edit', () => {
+    createFixture('SupportAgent', 4);
+    fixture.detectChanges();
+    flushDetails(assignedToAgentInProgress);
+    fixture.detectChanges();
+
+    expect(contentEditButton()).toBeTruthy();
+  });
+
+  it('unassigned SupportAgent does not see content Edit', () => {
+    createFixture('SupportAgent', 4);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest);
+    fixture.detectChanges();
+
+    expect(contentEditButton()).toBeUndefined();
+  });
+
+  it('SupportAgent assigned to another user does not see content Edit', () => {
+    createFixture('SupportAgent', 999);
+    fixture.detectChanges();
+    flushDetails(assignedToAgentInProgress);
+    fixture.detectChanges();
+
+    expect(contentEditButton()).toBeUndefined();
+  });
+
+  it('Admin on a non-terminal request sees content Edit', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest);
+    fixture.detectChanges();
+
+    expect(contentEditButton()).toBeTruthy();
+  });
+
+  it('Closed requests hide content Edit', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails({ ...testDetails, status: 'Closed', closedAt: '2026-01-03T00:00:00Z' });
+    fixture.detectChanges();
+
+    expect(contentEditButton()).toBeUndefined();
+  });
+
+  it('Cancelled requests hide content Edit', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    flushDetails({ ...testDetails, status: 'Cancelled', cancelledAt: '2026-01-03T00:00:00Z' });
+    fixture.detectChanges();
+
+    expect(contentEditButton()).toBeUndefined();
+  });
+
+  // Content form
+
+  it('opens content edit mode with current values prefilled', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+
+    const form = (fixture.componentInstance as any).contentForm;
+    expect(form.controls.title.value).toBe(unassignedNewRequest.title);
+    expect(form.controls.description.value).toBe(unassignedNewRequest.description);
+  });
+
+  it('content Cancel restores backend values and exits edit mode', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+
+    const form = (fixture.componentInstance as any).contentForm;
+    form.controls.title.setValue('Changed locally');
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('form[aria-label="Edit request content"] button[type="button"]').click();
+    fixture.detectChanges();
+
+    expect(form.controls.title.value).toBe(unassignedNewRequest.title);
+    expect(fixture.nativeElement.querySelector('form[aria-label="Edit request content"]')).toBeNull();
+  });
+
+  it('validates content title boundaries and whitespace', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+
+    const control = (fixture.componentInstance as any).contentForm.controls.title;
+    control.setValue('   ');
+    expect(control.hasError('required')).toBeTrue();
+    control.setValue('ab');
+    expect(control.hasError('trimmedLength')).toBeTrue();
+    control.setValue('abc');
+    expect(control.valid).toBeTrue();
+    control.setValue('a'.repeat(200));
+    expect(control.valid).toBeTrue();
+    control.setValue('a'.repeat(201));
+    expect(control.hasError('trimmedLength')).toBeTrue();
+  });
+
+  it('validates content description boundaries and whitespace', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+
+    const control = (fixture.componentInstance as any).contentForm.controls.description;
+    control.setValue('   ');
+    expect(control.hasError('required')).toBeTrue();
+    control.setValue('a');
+    expect(control.valid).toBeTrue();
+    control.setValue('a'.repeat(4000));
+    expect(control.valid).toBeTrue();
+    control.setValue('a'.repeat(4001));
+    expect(control.hasError('trimmedLength')).toBeTrue();
+  });
+
+  it('does not submit unchanged normalized content', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+
+    const form = (fixture.componentInstance as any).contentForm;
+    form.controls.title.setValue(`  ${unassignedNewRequest.title}  `);
+    form.controls.description.setValue(`  ${unassignedNewRequest.description}  `);
+    fixture.detectChanges();
+    saveContentButton().click();
+
+    expect(httpMock.match(`${requestsUrl}/42/content`).length).toBe(0);
+  });
+
+  it('sends title-only content change with the current description', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+
+    const form = (fixture.componentInstance as any).contentForm;
+    form.controls.title.setValue('Updated title');
+    fixture.detectChanges();
+    saveContentButton().click();
+
+    const req = httpMock.expectOne(`${requestsUrl}/42/content`);
+    expect(req.request.body).toEqual({ title: 'Updated title', description: unassignedNewRequest.description });
+    req.flush({ ...unassignedNewRequest, title: 'Updated title' });
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  it('sends description-only content change with the current title', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+
+    const form = (fixture.componentInstance as any).contentForm;
+    form.controls.description.setValue('Updated description.');
+    fixture.detectChanges();
+    saveContentButton().click();
+
+    const req = httpMock.expectOne(`${requestsUrl}/42/content`);
+    expect(req.request.body).toEqual({ title: unassignedNewRequest.title, description: 'Updated description.' });
+    req.flush({ ...unassignedNewRequest, description: 'Updated description.' });
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  it('sends a combined content payload once and blocks duplicates', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+
+    const form = (fixture.componentInstance as any).contentForm;
+    form.controls.title.setValue('Updated title');
+    form.controls.description.setValue('Updated description.');
+    fixture.detectChanges();
+    saveContentButton().click();
+    saveContentButton().click();
+
+    const requests = httpMock.match(`${requestsUrl}/42/content`);
+    expect(requests.length).toBe(1);
+    expect(requests[0].request.body).toEqual({ title: 'Updated title', description: 'Updated description.' });
+    requests[0].flush({ ...unassignedNewRequest, title: 'Updated title', description: 'Updated description.' });
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  // Content success and failure
+
+  it('does not optimistically mutate displayed content before save succeeds', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+
+    (fixture.componentInstance as any).contentForm.controls.title.setValue('Updated title');
+    fixture.detectChanges();
+    saveContentButton().click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('h1').textContent).toContain(unassignedNewRequest.title);
+    httpMock.expectOne(`${requestsUrl}/42/content`).flush({ ...unassignedNewRequest, title: 'Updated title' });
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  it('content success replaces details, exits edit mode, and refreshes history', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+
+    (fixture.componentInstance as any).contentForm.controls.title.setValue('Updated title');
+    fixture.detectChanges();
+    saveContentButton().click();
+    httpMock.expectOne(`${requestsUrl}/42/content`).flush({ ...unassignedNewRequest, title: 'Updated title' });
+    const historyReq = httpMock.expectOne(`${requestsUrl}/42/history`);
+    expect(historyReq.request.method).toBe('GET');
+    historyReq.flush([]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Updated title');
+    expect(fixture.nativeElement.querySelector('form[aria-label="Edit request content"]')).toBeNull();
+  });
+
+  it('content failure preserves edited form values', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+
+    const form = (fixture.componentInstance as any).contentForm;
+    form.controls.title.setValue('Edited title');
+    fixture.detectChanges();
+    saveContentButton().click();
+    httpMock.expectOne(`${requestsUrl}/42/content`).flush({}, { status: 500, statusText: 'Server Error' });
+    fixture.detectChanges();
+
+    expect(form.controls.title.value).toBe('Edited title');
+  });
+
+  it('shows content 403, 404, and 409 errors', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+
+    const form = (fixture.componentInstance as any).contentForm;
+    form.controls.title.setValue('Edited title');
+    fixture.detectChanges();
+    saveContentButton().click();
+    httpMock.expectOne(`${requestsUrl}/42/content`).flush({}, { status: 403, statusText: 'Forbidden' });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('You do not have permission to perform this action.');
+
+    form.controls.title.setValue('Edited title again');
+    fixture.detectChanges();
+    saveContentButton().click();
+    httpMock.expectOne(`${requestsUrl}/42/content`).flush({}, { status: 404, statusText: 'Not Found' });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('This request does not exist or is not available to you.');
+
+    form.controls.title.setValue('Edited title third');
+    fixture.detectChanges();
+    saveContentButton().click();
+    httpMock.expectOne(`${requestsUrl}/42/content`).flush({ detail: 'This request can no longer be edited.' }, { status: 409, statusText: 'Conflict' });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('This request can no longer be edited.');
+  });
+
+  // Content concurrency
+
+  it('blocks content save during assignment save', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest, [{ id: 4, displayName: 'Support Agent', role: 'SupportAgent' }]);
+    (fixture.componentInstance as any).contentForm.controls.title.setValue('Updated title');
+    fixture.detectChanges();
+
+    const select: HTMLSelectElement = fixture.nativeElement.querySelector('#assignee-select');
+    select.value = '4';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    const assignButton = Array.from(
+      fixture.nativeElement.querySelectorAll('.request-details-page__assignment-controls button'),
+    )[0] as HTMLButtonElement;
+    assignButton.click();
+    (fixture.componentInstance as any).submitContent();
+
+    expect(httpMock.match(`${requestsUrl}/42/content`).length).toBe(0);
+    httpMock.expectOne(`${requestsUrl}/42/assignment`).flush(unassignedNewRequest);
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  it('blocks content save during status save', () => {
+    createFixture('SupportAgent', 4);
+    fixture.detectChanges();
+    openContentEditor(assignedToAgentInProgress);
+    (fixture.componentInstance as any).contentForm.controls.title.setValue('Updated title');
+    fixture.detectChanges();
+
+    const resolveButton: HTMLButtonElement = Array.from(
+      fixture.nativeElement.querySelectorAll('.request-details-page__status-actions button'),
+    ).find((b) => (b as HTMLButtonElement).textContent?.trim() === 'Resolve') as HTMLButtonElement;
+    resolveButton.click();
+    (fixture.componentInstance as any).submitContent();
+
+    expect(httpMock.match(`${requestsUrl}/42/content`).length).toBe(0);
+    httpMock.expectOne(`${requestsUrl}/42/status`).flush({ ...assignedToAgentInProgress, status: 'Resolved' });
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  it('blocks content save during classification save', () => {
+    createFixture('Admin', 1);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+    (fixture.componentInstance as any).contentForm.controls.title.setValue('Updated title');
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('form[aria-label="Edit classification"] button[type="submit"]').click();
+    (fixture.componentInstance as any).submitContent();
+
+    expect(httpMock.match(`${requestsUrl}/42/content`).length).toBe(0);
+    httpMock.expectOne(`${requestsUrl}/42/classification`).flush(unassignedNewRequest);
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  it('comments loading remains independent while content save is active', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    openContentEditor(unassignedNewRequest);
+    (fixture.componentInstance as any).contentForm.controls.title.setValue('Updated title');
+    fixture.detectChanges();
+    saveContentButton().click();
+
+    (fixture.componentInstance as any).retryComments();
+    const commentsReq = httpMock.expectOne(`${requestsUrl}/42/comments`);
+    expect(commentsReq.request.method).toBe('GET');
+    commentsReq.flush([]);
+
+    httpMock.expectOne(`${requestsUrl}/42/content`).flush({ ...unassignedNewRequest, title: 'Updated title' });
+    httpMock.expectOne(`${requestsUrl}/42/history`).flush([]);
+  });
+
+  // Content history rendering
+
+  it('renders friendly title and description history text', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest, [
+      {
+        id: 20,
+        action: 'TitleChanged',
+        previousValue: 'Old title',
+        newValue: 'New title',
+        previousDisplayValue: 'Old title',
+        newDisplayValue: 'New title',
+        changedBy: { id: 1, displayName: 'Root Admin' },
+        createdAt: '2026-01-02T00:00:00Z',
+      },
+      {
+        id: 21,
+        action: 'DescriptionChanged',
+        previousValue: 'Old summary',
+        newValue: 'New summary',
+        previousDisplayValue: 'Old summary',
+        newDisplayValue: 'New summary',
+        changedBy: { id: 1, displayName: 'Root Admin' },
+        createdAt: '2026-01-02T00:00:00Z',
+      },
+    ]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Title changed from �Old title� to �New title�');
+    expect(fixture.nativeElement.textContent).toContain('Description updated');
+  });
+
+  it('uses readable fallback for missing title history values', () => {
+    createFixture('Employee', 3);
+    fixture.detectChanges();
+    flushDetails(unassignedNewRequest, [
+      {
+        id: 22,
+        action: 'TitleChanged',
+        previousValue: null,
+        newValue: null,
+        previousDisplayValue: null,
+        newDisplayValue: null,
+        changedBy: { id: 1, displayName: 'Root Admin' },
+        createdAt: '2026-01-02T00:00:00Z',
+      },
+    ]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('unknown value');
+  });});

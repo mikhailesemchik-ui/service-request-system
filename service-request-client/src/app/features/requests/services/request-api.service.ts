@@ -17,6 +17,7 @@ import {
   RequestListQuery,
   UpdateRequestAssignmentPayload,
   UpdateRequestClassificationPayload,
+  UpdateRequestContentPayload,
   UpdateRequestStatusPayload,
 } from '../models/request.models';
 
@@ -60,6 +61,10 @@ export class RequestApiService {
 
   changeStatus(requestId: number, payload: UpdateRequestStatusPayload): Observable<RequestDetails> {
     return this.http.patch<RequestDetails>(`${this.baseUrl}/${requestId}/status`, payload);
+  }
+
+  updateContent(requestId: number, payload: UpdateRequestContentPayload): Observable<RequestDetails> {
+    return this.http.patch<RequestDetails>(`${this.baseUrl}/${requestId}/content`, payload);
   }
 
   getHistory(requestId: number): Observable<RequestHistoryItem[]> {

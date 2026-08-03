@@ -519,6 +519,103 @@ public sealed class RequestService : IRequestService
         return ToDetailsDto(supportRequest);
     }
 
+    public async Task<RequestDetailsDto> UpdateContentAsync(
+        int requestId,
+        UpdateRequestContentRequest request,
+        AuthenticatedUserDto currentUser,
+        CancellationToken cancellationToken)
+    {
+        var actor = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == currentUser.Id, cancellationToken)
+            ?? throw new CurrentUserUnavailableException();
+
+        if (!actor.IsActive)
+        {
+            throw new CurrentUserUnavailableException();
+        }
+
+        var supportRequest = await LoadTrackedRequestAsync(requestId, cancellationToken)
+            ?? throw new SupportRequestNotFoundException(requestId);
+
+        if (actor.Role == UserRole.Employee && supportRequest.CreatedByUserId != actor.Id)
+        {
+            throw new SupportRequestNotFoundException(requestId);
+        }
+
+        EnsureActorCanEditContent(supportRequest, actor);
+
+        var previousTitle = supportRequest.Title;
+        var previousDescription = supportRequest.Description;
+
+        var (titleChanged, descriptionChanged) = supportRequest.UpdateContent(request.Title, request.Description);
+
+        if (!titleChanged && !descriptionChanged)
+        {
+            return ToDetailsDto(supportRequest);
+        }
+
+        if (titleChanged)
+        {
+            _dbContext.RequestHistory.Add(new RequestHistory(
+                supportRequest,
+                actor,
+                RequestHistoryActions.TitleChanged,
+                previousTitle,
+                supportRequest.Title));
+        }
+
+        if (descriptionChanged)
+        {
+            _dbContext.RequestHistory.Add(new RequestHistory(
+                supportRequest,
+                actor,
+                RequestHistoryActions.DescriptionChanged,
+                SummarizeDescription(previousDescription),
+                SummarizeDescription(supportRequest.Description)));
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return ToDetailsDto(supportRequest);
+    }
+
+    private static void EnsureActorCanEditContent(SupportRequest supportRequest, ApplicationUser actor)
+    {
+        if (actor.Role == UserRole.Employee)
+        {
+            if (supportRequest.Status != RequestStatus.New)
+            {
+                throw new RequestContentLockedException("This request can no longer be edited.");
+            }
+
+            return;
+        }
+
+        if (actor.Role == UserRole.SupportAgent)
+        {
+            if (supportRequest.AssignedToUserId != actor.Id)
+            {
+                throw new RequestContentForbiddenException();
+            }
+
+            if (supportRequest.Status is RequestStatus.Closed or RequestStatus.Cancelled)
+            {
+                throw new RequestContentLockedException("Closed or cancelled requests cannot be changed.");
+            }
+
+            return;
+        }
+
+        if (supportRequest.Status is RequestStatus.Closed or RequestStatus.Cancelled)
+        {
+            throw new RequestContentLockedException("Closed or cancelled requests cannot be changed.");
+        }
+    }
+
+    private static string SummarizeDescription(string text)
+    {
+        var collapsed = System.Text.RegularExpressions.Regex.Replace(text.Trim(), @"\s+", " ");
+        return collapsed.Length <= 120 ? collapsed : string.Concat(collapsed.AsSpan(0, 117), "...");
+    }
     private static string? ResolveDisplayValue(
         string action,
         string? rawValue,

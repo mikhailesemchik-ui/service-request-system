@@ -18,7 +18,7 @@ export function trimmedTitleValidator(): ValidatorFn {
 }
 
 /** Trims before checking length; whitespace-only input is treated as empty (invalid). */
-export function trimmedDescriptionValidator(): ValidatorFn {
+export function trimmedDescriptionValidator(minLength = 10): ValidatorFn {
   return (control: AbstractControl): ValidationErrors | null => {
     const trimmed = typeof control.value === 'string' ? control.value.trim() : '';
 
@@ -26,8 +26,8 @@ export function trimmedDescriptionValidator(): ValidatorFn {
       return { required: true };
     }
 
-    if (trimmed.length < 10 || trimmed.length > 4000) {
-      return { trimmedLength: { min: 10, max: 4000 } };
+    if (trimmed.length < minLength || trimmed.length > 4000) {
+      return { trimmedLength: { min: minLength, max: 4000 } };
     }
 
     return null;

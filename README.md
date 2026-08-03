@@ -38,8 +38,8 @@ current-user endpoint, role policies). The Angular client implements the
 corresponding authentication foundation (login, session restoration, route
 guards, authenticated shell), a category management UI (view for all
 authenticated roles; create, edit, and activate/deactivate for Admin), and a
-service requests UI (list, create, details with assignment/status actions,
-history, and comments). Attachments, request editing, and deletion are not yet
+service requests UI (list, create, details with content editing, assignment/status actions,
+history, and comments). Attachments, rich-text editing, version restoration, and deletion are not yet
 implemented.
 
 ## Prerequisites
@@ -261,13 +261,33 @@ every role (`New → InProgress/Cancelled`, `InProgress → WaitingForUser/Resol
   auto-assigned as a side effect of a status change.
 - Setting a request to its current status is a no-op (no duplicate history entry).
 
+### Request content editing
+
+The details page supports title and description updates through
+`PATCH /api/requests/{id}/content`. Both fields are required on every update; this is not a
+partial patch. The backend trims both values, requires title length 3-200 characters and
+description length 1-4000 characters, and treats repeated identical normalized updates as
+no-ops.
+
+- **Employee**: can edit only their own `New` requests. Their own requests in any later status
+  are locked, and another user's request remains hidden as not found.
+- **SupportAgent**: can edit only requests assigned to them while the request is not `Closed` or
+  `Cancelled`.
+- **Admin**: can edit any non-terminal request without being assigned.
+- `Closed` and `Cancelled` requests are read-only for all roles.
+
+Only title and description are editable here. Category, priority, status, assignment, creator,
+attachments, rich text, and version restoration are intentionally outside this endpoint.
+
 ### Request history
 
-Every actual assignment change and status change is recorded (`GET /api/requests/{id}/history`)
-with the acting user, a timestamp, and both the raw stored value and a human-readable version
-(e.g. a resolved display name instead of a bare user ID). Idempotent no-op calls do not create
-history entries. History and its triggering mutation are written in the same database
-operation, so a failed mutation never leaves behind an orphaned history row.
+Every actual assignment change, status change, classification change, title change, and
+description change is recorded (`GET /api/requests/{id}/history`) with the acting user and a
+timestamp. Title history stores the full normalized old and new title. Description history stores
+audit-safe summaries only: whitespace is collapsed and values longer than 120 characters are
+truncated with an ellipsis, so full long descriptions are not exposed in history. Idempotent
+no-op calls do not create history entries. History and its triggering mutation are written in the
+same database operation, so a failed mutation never leaves behind an orphaned history row.
 
 ### Comments
 
@@ -336,15 +356,14 @@ npx ng test --watch=false
 - Registration, refresh tokens, token renewal, password reset, email
   verification, and user-management CRUD are not implemented — only login
   and the current-user endpoint exist.
-- Requests support creation, viewing, assignment, and status transitions
-  (see "Assignment and status management" above), each recorded in request
-  history. There are no comments, no attachments, no request editing, and
-  no deletion.
+- Requests support creation, viewing, title/description content editing, assignment,
+  status transitions, comments, and history. There are no attachments, rich-text
+  editing, version restoration, or deletion.
 - The Angular client implements login, session restoration, route guards,
   a minimal authenticated shell (Dashboard, Categories, Requests), category
   management (view for all roles; create/edit/activate/deactivate for
   Admin), and service requests (list with filters/pagination, create,
-  details with assignment/status actions and history — view for all roles,
+  details with content editing, assignment/status actions and history — view for all roles,
   scoped to own requests for Employee).
   There is no category search, sorting, pagination, or deletion — the list
   is expected to stay small, and deactivation is used instead of deletion

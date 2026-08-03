@@ -573,4 +573,216 @@ public class SupportRequestTests
 
         Assert.Equal(updatedAtBefore, request.UpdatedAt);
     }
+
+    // UpdateContent
+
+    [Fact]
+    public void UpdateContent_TrimsTitle()
+    {
+        var request = CreateRequest();
+
+        request.UpdateContent("  Network printer offline  ", request.Description);
+
+        Assert.Equal("Network printer offline", request.Title);
+    }
+
+    [Fact]
+    public void UpdateContent_TrimsDescription()
+    {
+        var request = CreateRequest();
+
+        request.UpdateContent(request.Title, "  Printer drops from the network.  ");
+
+        Assert.Equal("Printer drops from the network.", request.Description);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void UpdateContent_WhenTitleIsBlank_ThrowsArgumentException(string title)
+    {
+        var request = CreateRequest();
+
+        Assert.Throws<ArgumentException>(() => request.UpdateContent(title, "Some description."));
+    }
+
+    [Fact]
+    public void UpdateContent_WhenTitleIsUnderMinimumAfterTrimming_ThrowsArgumentException()
+    {
+        var request = CreateRequest();
+
+        Assert.Throws<ArgumentException>(() => request.UpdateContent("  ab  ", request.Description));
+    }
+
+    [Fact]
+    public void UpdateContent_WhenTitleIsExactlyMinimumLength_AcceptsTitle()
+    {
+        var request = CreateRequest();
+
+        request.UpdateContent("abc", request.Description);
+
+        Assert.Equal("abc", request.Title);
+    }
+
+    [Fact]
+    public void UpdateContent_WhenTitleIsExactlyMaximumLength_AcceptsTitle()
+    {
+        var request = CreateRequest();
+        var title = new string('a', 200);
+
+        request.UpdateContent(title, request.Description);
+
+        Assert.Equal(title, request.Title);
+    }
+
+    [Fact]
+    public void UpdateContent_WhenTitleIsOverMaximumLength_ThrowsArgumentException()
+    {
+        var request = CreateRequest();
+        var title = new string('a', 201);
+
+        Assert.Throws<ArgumentException>(() => request.UpdateContent(title, request.Description));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void UpdateContent_WhenDescriptionIsBlank_ThrowsArgumentException(string description)
+    {
+        var request = CreateRequest();
+
+        Assert.Throws<ArgumentException>(() => request.UpdateContent("New title", description));
+    }
+
+    [Fact]
+    public void UpdateContent_WhenDescriptionIsExactlyMinimumLength_AcceptsDescription()
+    {
+        var request = CreateRequest();
+
+        request.UpdateContent(request.Title, "a");
+
+        Assert.Equal("a", request.Description);
+    }
+
+    [Fact]
+    public void UpdateContent_WhenDescriptionIsExactlyMaximumLength_AcceptsDescription()
+    {
+        var request = CreateRequest();
+        var description = new string('a', 4000);
+
+        request.UpdateContent(request.Title, description);
+
+        Assert.Equal(description, request.Description);
+    }
+
+    [Fact]
+    public void UpdateContent_WhenDescriptionIsOverMaximumLength_ThrowsArgumentException()
+    {
+        var request = CreateRequest();
+        var description = new string('a', 4001);
+
+        Assert.Throws<ArgumentException>(() => request.UpdateContent(request.Title, description));
+    }
+
+    [Fact]
+    public void UpdateContent_WhenOnlyTitleChanges_ReturnsOnlyTitleChanged()
+    {
+        var request = CreateRequest();
+
+        var result = request.UpdateContent("Different title", request.Description);
+
+        Assert.True(result.TitleChanged);
+        Assert.False(result.DescriptionChanged);
+        Assert.Equal("Different title", request.Title);
+    }
+
+    [Fact]
+    public void UpdateContent_WhenOnlyDescriptionChanges_ReturnsOnlyDescriptionChanged()
+    {
+        var request = CreateRequest();
+
+        var result = request.UpdateContent(request.Title, "Different description.");
+
+        Assert.False(result.TitleChanged);
+        Assert.True(result.DescriptionChanged);
+        Assert.Equal("Different description.", request.Description);
+    }
+
+    [Fact]
+    public void UpdateContent_WhenTitleAndDescriptionChange_ReturnsBothChanged()
+    {
+        var request = CreateRequest();
+
+        var result = request.UpdateContent("Different title", "Different description.");
+
+        Assert.True(result.TitleChanged);
+        Assert.True(result.DescriptionChanged);
+        Assert.Equal("Different title", request.Title);
+        Assert.Equal("Different description.", request.Description);
+    }
+
+    [Fact]
+    public void UpdateContent_WhenNormalizedValuesMatch_ReturnsBothFalse()
+    {
+        var request = CreateRequest();
+
+        var result = request.UpdateContent($"  {request.Title}  ", $"  {request.Description}  ");
+
+        Assert.False(result.TitleChanged);
+        Assert.False(result.DescriptionChanged);
+    }
+
+    [Fact]
+    public void UpdateContent_WhenNothingChanges_DoesNotChangeUpdatedAt()
+    {
+        var request = CreateRequest();
+        var updatedAtBefore = request.UpdatedAt;
+
+        request.UpdateContent(request.Title, request.Description);
+
+        Assert.Equal(updatedAtBefore, request.UpdatedAt);
+    }
+
+    [Fact]
+    public void UpdateContent_WhenContentChanges_ChangesUpdatedAt()
+    {
+        var request = CreateRequest();
+        var updatedAtBefore = request.UpdatedAt;
+        Thread.Sleep(1);
+
+        request.UpdateContent("Updated title", request.Description);
+
+        Assert.True(request.UpdatedAt > updatedAtBefore);
+    }
+
+    [Fact]
+    public void UpdateContent_WhenClosed_ThrowsRequestContentLockedException()
+    {
+        var request = CreateRequestInStatus(RequestStatus.Closed);
+
+        Assert.Throws<RequestContentLockedException>(() => request.UpdateContent("New title", "New description."));
+    }
+
+    [Fact]
+    public void UpdateContent_WhenCancelled_ThrowsRequestContentLockedException()
+    {
+        var request = CreateRequestInStatus(RequestStatus.Cancelled);
+
+        Assert.Throws<RequestContentLockedException>(() => request.UpdateContent("New title", "New description."));
+    }
+
+    [Theory]
+    [InlineData(RequestStatus.New)]
+    [InlineData(RequestStatus.InProgress)]
+    [InlineData(RequestStatus.WaitingForUser)]
+    [InlineData(RequestStatus.Resolved)]
+    public void UpdateContent_WhenStatusIsNonTerminal_Succeeds(RequestStatus status)
+    {
+        var request = CreateRequestInStatus(status);
+
+        var result = request.UpdateContent("Updated title", "Updated description.");
+
+        Assert.True(result.TitleChanged);
+        Assert.True(result.DescriptionChanged);
+    }
 }

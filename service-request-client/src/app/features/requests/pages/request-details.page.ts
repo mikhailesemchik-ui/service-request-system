@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, ViewChild, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -23,6 +23,7 @@ import {
   RequestPriority,
   RequestStatus,
 } from '../models/request.models';
+import { trimmedDescriptionValidator, trimmedTitleValidator } from '../requests.validators';
 import { RequestApiService } from '../services/request-api.service';
 
 const NOT_FOUND_MESSAGE = 'This request does not exist or is not available to you.';
@@ -35,6 +36,8 @@ const ASSIGNMENT_ERROR_FALLBACK = 'Unable to update the assignment. Please try a
 const STATUS_ERROR_FALLBACK = 'Unable to update the status. Please try again.';
 const COMMENT_SUBMIT_ERROR_FALLBACK = 'Unable to submit the comment. Please try again.';
 const CLASSIFICATION_ERROR_FALLBACK = 'Unable to update the classification. Please try again.';
+const CONTENT_ERROR_FALLBACK = 'Unable to update the request content. Please try again.';
+const CONTENT_LOCKED_MESSAGE = 'This request can no longer be edited.';
 const SERVICE_UNAVAILABLE_MESSAGE = 'Unable to reach the server. Please check your connection and try again.';
 const PERMISSION_DENIED_MESSAGE = 'You do not have permission to perform this action.';
 const INVALID_ID_MESSAGE = 'This request could not be found.';
@@ -67,6 +70,8 @@ export class RequestDetailsPageComponent {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly fb = inject(FormBuilder);
+
+  @ViewChild('contentTitleInput') private contentTitleInput?: ElementRef<HTMLInputElement>;
 
   protected readonly statusLabels = STATUS_LABELS;
   protected readonly priorityOptions = REQUEST_PRIORITIES;
@@ -114,6 +119,14 @@ export class RequestDetailsPageComponent {
   protected readonly classificationForm = this.fb.nonNullable.group({
     categoryId: [0, [Validators.required, Validators.min(1)]],
     priority: ['' as RequestPriority, [Validators.required]],
+  });
+  protected readonly isContentEditing = signal(false);
+  protected readonly isContentSaving = signal(false);
+  protected readonly contentError = signal<string | null>(null);
+  protected readonly contentChanged = signal(false);
+  protected readonly contentForm = this.fb.nonNullable.group({
+    title: ['', [trimmedTitleValidator()]],
+    description: ['', [trimmedDescriptionValidator(1)]],
   });
 
   protected readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
@@ -170,6 +183,30 @@ export class RequestDetailsPageComponent {
     return request !== null && !CLOSED_STATUSES.includes(request.status);
   });
 
+  protected readonly isRequestMutationSaving = computed(() =>
+    this.isAssignmentSaving() || this.isStatusSaving() || this.isClassificationSaving() || this.isContentSaving(),
+  );
+
+  protected readonly canEditContent = computed(() => {
+    const request = this.request();
+    const role = this.currentUserRole();
+    const userId = this.currentUserId();
+
+    if (!request || !role || userId === null || CLOSED_STATUSES.includes(request.status)) {
+      return false;
+    }
+
+    if (role === 'Employee') {
+      return request.createdBy.id === userId && request.status === 'New';
+    }
+
+    if (role === 'SupportAgent') {
+      return request.assignedTo?.id === userId;
+    }
+
+    return role === 'Admin';
+  });
+
   protected readonly canEditClassification = computed(() => {
     const request = this.request();
     const role = this.currentUserRole();
@@ -191,6 +228,10 @@ export class RequestDetailsPageComponent {
   });
 
   constructor() {
+    this.contentForm.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.updateContentFormChanged());
+
     this.loadRequest();
   }
 
@@ -214,9 +255,76 @@ export class RequestDetailsPageComponent {
     this.loadCategories();
   }
 
+  protected startContentEdit(): void {
+    const request = this.request();
+    if (!request || !this.canEditContent() || this.isRequestMutationSaving()) {
+      return;
+    }
+
+    this.resetContentForm(request);
+    this.contentError.set(null);
+    this.isContentEditing.set(true);
+    setTimeout(() => this.contentTitleInput?.nativeElement.focus());
+  }
+
+  protected cancelContentEdit(): void {
+    const request = this.request();
+    if (request) {
+      this.resetContentForm(request);
+    }
+
+    this.contentError.set(null);
+    this.isContentEditing.set(false);
+  }
+
+  protected submitContent(): void {
+    const request = this.request();
+    if (
+      !request ||
+      this.isContentSaving() ||
+      this.isAssignmentSaving() ||
+      this.isStatusSaving() ||
+      this.isClassificationSaving()
+    ) {
+      return;
+    }
+
+    this.contentForm.markAllAsTouched();
+    this.updateContentFormChanged();
+
+    if (this.contentForm.invalid || !this.contentChanged()) {
+      return;
+    }
+
+    const { title, description } = this.contentForm.getRawValue();
+    const payload = {
+      title: title.trim(),
+      description: description.trim(),
+    };
+
+    this.isContentSaving.set(true);
+    this.contentError.set(null);
+
+    this.requestApi
+      .updateContent(request.id, payload)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (updated) => {
+          this.isContentSaving.set(false);
+          this.request.set(updated);
+          this.resetContentForm(updated);
+          this.isContentEditing.set(false);
+          this.loadHistory();
+        },
+        error: (error: unknown) => {
+          this.isContentSaving.set(false);
+          this.contentError.set(this.resolveErrorMessage(error, CONTENT_ERROR_FALLBACK));
+        },
+      });
+  }
   protected submitClassification(): void {
     const request = this.request();
-    if (!request || this.isClassificationSaving() || this.isAssignmentSaving() || this.isStatusSaving() || this.classificationForm.invalid) {
+    if (!request || this.isRequestMutationSaving() || this.classificationForm.invalid) {
       return;
     }
 
@@ -286,7 +394,7 @@ export class RequestDetailsPageComponent {
   }
 
   protected requestStatusChange(status: RequestStatus): void {
-    if (this.isStatusSaving()) {
+    if (this.isRequestMutationSaving()) {
       return;
     }
 
@@ -339,7 +447,7 @@ export class RequestDetailsPageComponent {
 
   private submitAssignment(assignedToUserId: number | null): void {
     const request = this.request();
-    if (!request || this.isAssignmentSaving() || this.isStatusSaving() || this.isClassificationSaving()) {
+    if (!request || this.isRequestMutationSaving()) {
       return;
     }
 
@@ -365,7 +473,7 @@ export class RequestDetailsPageComponent {
 
   private submitStatusChange(status: RequestStatus): void {
     const request = this.request();
-    if (!request || this.isStatusSaving() || this.isAssignmentSaving() || this.isClassificationSaving()) {
+    if (!request || this.isRequestMutationSaving()) {
       return;
     }
 
@@ -409,6 +517,7 @@ export class RequestDetailsPageComponent {
           this.isLoading.set(false);
           this.request.set(request);
           this.resetClassificationForm(request);
+          this.resetContentForm(request);
           this.loadHistory();
           this.loadComments();
           this.loadEligibleAssignees();
@@ -513,6 +622,29 @@ export class RequestDetailsPageComponent {
     });
   }
 
+  private resetContentForm(request: RequestDetails): void {
+    this.contentForm.reset({
+      title: request.title,
+      description: request.description,
+    });
+    this.contentChanged.set(false);
+  }
+
+  private updateContentFormChanged(): void {
+    const request = this.request();
+    if (!request) {
+      this.contentChanged.set(false);
+      return;
+    }
+
+    const { title, description } = this.contentForm.getRawValue();
+    this.contentChanged.set(title.trim() !== request.title || description.trim() !== request.description);
+  }
+
+  private historyValue(value: string | null): string {
+    const trimmed = value?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed : 'unknown value';
+  }
   protected historyDescription(entry: RequestHistoryItem): string {
     if (entry.action === 'StatusChanged') {
       return `Status changed from ${entry.previousDisplayValue} to ${entry.newDisplayValue}`;
@@ -534,6 +666,14 @@ export class RequestDetailsPageComponent {
       return `Category changed from ${entry.previousDisplayValue} to ${entry.newDisplayValue}`;
     }
 
+    if (entry.action === 'TitleChanged') {
+      return `Title changed from �${this.historyValue(entry.previousDisplayValue)}� to �${this.historyValue(entry.newDisplayValue)}�`;
+    }
+
+    if (entry.action === 'DescriptionChanged') {
+      return 'Description updated';
+    }
+
     if (entry.action === 'PriorityChanged') {
       return `Priority changed from ${entry.previousDisplayValue} to ${entry.newDisplayValue}`;
     }
@@ -553,6 +693,11 @@ export class RequestDetailsPageComponent {
 
       if (error.status === 404) {
         return NOT_FOUND_MESSAGE;
+      }
+
+      if (error.status === 409) {
+        const problemDetails = error.error as ProblemDetails | null;
+        return problemDetails?.detail ?? CONTENT_LOCKED_MESSAGE;
       }
 
       const problemDetails = error.error as ProblemDetails | null;

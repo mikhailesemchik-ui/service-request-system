@@ -211,4 +211,34 @@ describe('RequestApiService', () => {
     expect(bodyKeys).toEqual(jasmine.arrayWithExactContents(['categoryId', 'priority']));
     req.flush(testDetails);
   });
-});
+
+  it('sends the content PATCH to the correct URL', () => {
+    service.updateContent(42, { title: 'Updated title', description: 'Updated description.' }).subscribe();
+
+    const req = httpMock.expectOne(`${requestsUrl}/42/content`);
+    expect(req.request.method).toBe('PATCH');
+    req.flush(testDetails);
+  });
+
+  it('sends exactly title and description in the content body', () => {
+    service.updateContent(42, { title: 'Updated title', description: 'Updated description.' }).subscribe();
+
+    const req = httpMock.expectOne(`${requestsUrl}/42/content`);
+    expect(req.request.body).toEqual({ title: 'Updated title', description: 'Updated description.' });
+    expect(Object.keys(req.request.body as object)).toEqual(jasmine.arrayWithExactContents(['title', 'description']));
+    req.flush(testDetails);
+  });
+
+  it('returns the updated RequestDetails from content updates', () => {
+    const updatedDetails: RequestDetails = {
+      ...testDetails,
+      title: 'Updated title',
+      description: 'Updated description.',
+    };
+
+    service.updateContent(42, { title: 'Updated title', description: 'Updated description.' }).subscribe((result) => {
+      expect(result).toEqual(updatedDetails);
+    });
+
+    httpMock.expectOne(`${requestsUrl}/42/content`).flush(updatedDetails);
+  });});

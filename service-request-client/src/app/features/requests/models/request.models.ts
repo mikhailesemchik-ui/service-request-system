@@ -75,6 +75,11 @@ export interface UpdateRequestStatusPayload {
   status: RequestStatus;
 }
 
+export interface UpdateRequestContentPayload {
+  title: string;
+  description: string;
+}
+
 export interface RequestHistoryItem {
   id: number;
   action: string;

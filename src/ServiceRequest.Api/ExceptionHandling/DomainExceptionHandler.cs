@@ -33,6 +33,9 @@ public sealed class DomainExceptionHandler : IExceptionHandler
             InternalCommentForbiddenException => ((int?)StatusCodes.Status403Forbidden, "Forbidden"),
             RequestClassificationForbiddenException => ((int?)StatusCodes.Status403Forbidden, "Forbidden"),
             RequestClassificationLockedException => ((int?)StatusCodes.Status409Conflict, "Request cannot be modified"),
+            RequestContentForbiddenException => ((int?)StatusCodes.Status403Forbidden, "Forbidden"),
+            RequestContentLockedException => ((int?)StatusCodes.Status409Conflict, "Request cannot be edited"),
+            ArgumentException => ((int?)StatusCodes.Status400BadRequest, "Invalid request"),
             _ => (null, null),
         };
 

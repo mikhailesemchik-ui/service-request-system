@@ -62,8 +62,85 @@
         }
       </dl>
 
-      <h2>Description</h2>
-      <p class="request-details-page__description">{{ details.description }}</p>
+      <section class="request-details-page__section request-details-page__content" aria-labelledby="content-heading">
+        <h2 id="content-heading">Request content</h2>
+
+        <div class="request-details-page__content-display">
+          <h3>{{ details.title }}</h3>
+          <p class="request-details-page__description">{{ details.description }}</p>
+        </div>
+
+        @if (!isContentEditing()) {
+          @if (canEditContent()) {
+            <button type="button" (click)="startContentEdit()" [disabled]="isRequestMutationSaving()">Edit</button>
+          }
+        } @else {
+          <form
+            class="request-details-page__comment-form request-details-page__content-form"
+            [formGroup]="contentForm"
+            (ngSubmit)="submitContent()"
+            aria-label="Edit request content"
+          >
+            <div class="request-details-page__comment-form-field">
+              <label for="request-content-title">Title</label>
+              <input
+                #contentTitleInput
+                id="request-content-title"
+                type="text"
+                formControlName="title"
+                [attr.aria-invalid]="contentForm.controls.title.invalid && contentForm.controls.title.touched ? 'true' : null"
+                [attr.aria-describedby]="contentForm.controls.title.invalid && contentForm.controls.title.touched ? 'request-content-title-error' : null"
+              />
+              @if (contentForm.controls.title.invalid && contentForm.controls.title.touched) {
+                <p id="request-content-title-error" class="request-details-page__field-error" role="alert">
+                  @if (contentForm.controls.title.errors?.['required']) {
+                    Title is required.
+                  } @else {
+                    Title must contain between 3 and 200 characters.
+                  }
+                </p>
+              }
+            </div>
+
+            <div class="request-details-page__comment-form-field">
+              <label for="request-content-description">Description</label>
+              <textarea
+                id="request-content-description"
+                formControlName="description"
+                rows="5"
+                [attr.aria-invalid]="contentForm.controls.description.invalid && contentForm.controls.description.touched ? 'true' : null"
+                [attr.aria-describedby]="contentForm.controls.description.invalid && contentForm.controls.description.touched ? 'request-content-description-error' : null"
+              ></textarea>
+              @if (contentForm.controls.description.invalid && contentForm.controls.description.touched) {
+                <p id="request-content-description-error" class="request-details-page__field-error" role="alert">
+                  @if (contentForm.controls.description.errors?.['required']) {
+                    Description is required.
+                  } @else {
+                    Description cannot exceed 4000 characters.
+                  }
+                </p>
+              }
+            </div>
+
+            @if (contentError(); as message) {
+              <p class="request-details-page__error" role="alert">{{ message }}</p>
+            }
+            @if (isContentSaving()) {
+              <p class="request-details-page__status-inline" role="status">Saving content...</p>
+            }
+
+            <div class="request-details-page__classification-actions">
+              <button
+                type="submit"
+                [disabled]="isContentSaving() || isAssignmentSaving() || isStatusSaving() || isClassificationSaving() || contentForm.invalid || !contentChanged()"
+              >
+                Save
+              </button>
+              <button type="button" (click)="cancelContentEdit()" [disabled]="isContentSaving()">Cancel</button>
+            </div>
+          </form>
+        }
+      </section>
 
       @if (canManageAssignment()) {
         <section class="request-details-page__section" aria-labelledby="assignment-heading">
@@ -86,7 +163,7 @@
                   id="assignee-select"
                   [value]="selectedAssigneeId()"
                   (change)="onAssigneeSelectChange($any($event.target).value)"
-                  [disabled]="isAssignmentSaving() || isStatusSaving() || assignees() === null"
+                  [disabled]="isRequestMutationSaving() || assignees() === null"
                 >
                   <option value="">
                     {{ assignees() === null ? 'Loading assignees…' : 'Select an assignee' }}
@@ -98,7 +175,7 @@
                 <button
                   type="button"
                   (click)="assignSelected()"
-                  [disabled]="isAssignmentSaving() || isStatusSaving() || selectedAssigneeId() === ''"
+                  [disabled]="isRequestMutationSaving() || selectedAssigneeId() === ''"
                 >
                   {{ details.assignedTo ? 'Reassign' : 'Assign' }}
                 </button>
@@ -106,7 +183,7 @@
                   <button
                     type="button"
                     (click)="removeAssignment()"
-                    [disabled]="isAssignmentSaving() || isStatusSaving()"
+                    [disabled]="isRequestMutationSaving()"
                   >
                     Remove assignment
                   </button>
@@ -116,7 +193,7 @@
           } @else {
             <div class="request-details-page__assignment-controls">
               @if (canAssignToSelf()) {
-                <button type="button" (click)="assignToSelf()" [disabled]="isAssignmentSaving() || isStatusSaving()">
+                <button type="button" (click)="assignToSelf()" [disabled]="isRequestMutationSaving()">
                   Assign to me
                 </button>
               }
@@ -124,7 +201,7 @@
                 <button
                   type="button"
                   (click)="removeOwnAssignment()"
-                  [disabled]="isAssignmentSaving() || isStatusSaving()"
+                  [disabled]="isRequestMutationSaving()"
                 >
                   Remove my assignment
                 </button>
@@ -206,7 +283,7 @@
                 }
 
                 <div class="request-details-page__classification-actions">
-                  <button type="submit" [disabled]="isClassificationSaving() || isAssignmentSaving() || isStatusSaving() || classificationForm.invalid">
+                  <button type="submit" [disabled]="isRequestMutationSaving() || classificationForm.invalid">
                     {{ isClassificationSaving() ? 'Saving…' : 'Save changes' }}
                   </button>
                   <button type="button" (click)="resetClassification()" [disabled]="isClassificationSaving()">
@@ -235,7 +312,7 @@
                   <button
                     type="button"
                     (click)="requestStatusChange(option)"
-                    [disabled]="isStatusSaving() || isAssignmentSaving()"
+                    [disabled]="isRequestMutationSaving()"
                   >
                     Confirm
                   </button>
@@ -245,7 +322,7 @@
                 <button
                   type="button"
                   (click)="requestStatusChange(option)"
-                  [disabled]="isStatusSaving() || isAssignmentSaving()"
+                  [disabled]="isRequestMutationSaving()"
                 >
                   {{ statusLabels[option] }}
                 </button>

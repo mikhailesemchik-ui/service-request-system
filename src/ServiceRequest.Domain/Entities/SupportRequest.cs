@@ -6,6 +6,10 @@ namespace ServiceRequest.Domain.Entities;
 
 public sealed class SupportRequest
 {
+    public const int MinimumTitleLength = 3;
+    public const int MaximumTitleLength = 200;
+    public const int MinimumDescriptionLength = 1;
+    public const int MaximumDescriptionLength = 4000;
     public int Id { get; private set; }
 
     public string Title { get; private set; } = string.Empty;
@@ -52,8 +56,8 @@ public sealed class SupportRequest
         ArgumentNullException.ThrowIfNull(category);
         ArgumentNullException.ThrowIfNull(createdByUser);
 
-        Title = NormalizeRequiredText(title, "Request title cannot be blank.", nameof(title));
-        Description = NormalizeRequiredText(description, "Request description cannot be blank.", nameof(description));
+        Title = NormalizeTitle(title, nameof(title));
+        Description = NormalizeDescription(description, nameof(description));
         Status = RequestStatus.New;
         Priority = priority;
         Category = category;
@@ -207,13 +211,74 @@ public sealed class SupportRequest
         }
     }
 
-    private static string NormalizeRequiredText(string value, string errorMessage, string paramName)
+    /// <returns>A tuple indicating whether title and/or description actually changed.</returns>
+    public (bool TitleChanged, bool DescriptionChanged) UpdateContent(string newTitle, string newDescription)
+    {
+        if (Status is RequestStatus.Closed or RequestStatus.Cancelled)
+        {
+            throw new RequestContentLockedException();
+        }
+
+        var normalizedTitle = NormalizeTitle(newTitle, nameof(newTitle));
+        var normalizedDescription = NormalizeDescription(newDescription, nameof(newDescription));
+
+        var titleChanged = !string.Equals(Title, normalizedTitle, StringComparison.Ordinal);
+        var descriptionChanged = !string.Equals(Description, normalizedDescription, StringComparison.Ordinal);
+
+        if (titleChanged)
+        {
+            Title = normalizedTitle;
+        }
+
+        if (descriptionChanged)
+        {
+            Description = normalizedDescription;
+        }
+
+        if (titleChanged || descriptionChanged)
+        {
+            UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        return (titleChanged, descriptionChanged);
+    }
+
+    private static string NormalizeTitle(string value, string paramName) =>
+        NormalizeRequiredText(
+            value,
+            "Request title cannot be blank.",
+            $"Request title must contain between {MinimumTitleLength} and {MaximumTitleLength} characters.",
+            MinimumTitleLength,
+            MaximumTitleLength,
+            paramName);
+
+    private static string NormalizeDescription(string value, string paramName) =>
+        NormalizeRequiredText(
+            value,
+            "Request description cannot be blank.",
+            $"Request description must contain between {MinimumDescriptionLength} and {MaximumDescriptionLength} characters.",
+            MinimumDescriptionLength,
+            MaximumDescriptionLength,
+            paramName);
+
+    private static string NormalizeRequiredText(
+        string value,
+        string blankErrorMessage,
+        string lengthErrorMessage,
+        int minimumLength,
+        int maximumLength,
+        string paramName)
     {
         var trimmed = value?.Trim() ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(trimmed))
         {
-            throw new ArgumentException(errorMessage, paramName);
+            throw new ArgumentException(blankErrorMessage, paramName);
+        }
+
+        if (trimmed.Length < minimumLength || trimmed.Length > maximumLength)
+        {
+            throw new ArgumentException(lengthErrorMessage, paramName);
         }
 
         return trimmed;

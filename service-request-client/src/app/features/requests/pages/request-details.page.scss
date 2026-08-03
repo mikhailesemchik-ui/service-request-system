@@ -67,6 +67,7 @@
 
 .request-details-page__description {
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .request-details-page__section {
@@ -180,6 +181,7 @@
     font-size: 0.875rem;
   }
 
+  input,
   textarea,
   select {
     padding: 0.5rem;
@@ -282,4 +284,21 @@ button[type='button'] {
     color: #98a2b3;
     cursor: not-allowed;
   }
+}
+
+.request-details-page__content-display {
+  h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+  }
+}
+
+.request-details-page__content-form {
+  margin-top: 0.75rem;
+}
+
+.request-details-page__status-inline {
+  margin: 0;
+  color: #667085;
+  font-size: 0.875rem;
 }
