@@ -1,379 +1,398 @@
 # Service Request System
 
-## Purpose
+A full-stack IT service desk application demonstrating role-based request management, secure
+backend authorization, a complete request lifecycle, and automated testing across all layers.
 
-An internal system for employees to submit service requests, and for support agents
-and administrators to track, assign, and resolve them.
+---
 
-## Technology Stack
+## Highlights
 
-- .NET 8 / ASP.NET Core 8 Web API (controllers)
-- Entity Framework Core 8 (Code First)
-- Angular 18 (standalone components, routing, SCSS)
-- xUnit and Moq for backend tests
-- Jasmine and Karma for frontend tests
-- Swagger / Swashbuckle for API documentation
+- **Role-differentiated workflows** — Employees, Support Agents, and Admins each see and can do
+  exactly what their role allows; all authorization is enforced server-side independently of what
+  the UI exposes.
+- **Audit trail** — every status change, assignment, classification update, and content edit is
+  recorded atomically in the same database transaction as the mutation that caused it.
+- **Internal notes** — support staff can attach internal comments that are never returned to
+  employee callers, enforced at the API level on every response.
+- **Layered architecture** — a Domain/Application/Infrastructure/API split keeps business rules
+  decoupled from persistence, tested independently, and easy to follow.
+- **506 backend tests / 268 Angular tests** — domain-rule unit tests, real-database integration
+  tests through the full HTTP stack, and Angular component and service tests.
 
-## Current Structure
+---
+
+## Screenshots
+
+> Screenshots are captured against the seeded development database.
+> See [`docs/screenshots/CAPTURE.md`](docs/screenshots/CAPTURE.md) for the manual capture checklist.
+
+| View | Path |
+|---|---|
+| Login page | `docs/screenshots/login.png` |
+| Admin dashboard | `docs/screenshots/dashboard-admin.png` |
+| Employee dashboard | `docs/screenshots/dashboard-employee.png` |
+| Request list with filters | `docs/screenshots/requests-list.png` |
+| Request details & management | `docs/screenshots/request-details.png` |
+| Comments with internal note | `docs/screenshots/comments-history.png` |
+
+---
+
+## Roles and permissions
+
+| Action | Employee | SupportAgent | Admin |
+|---|:---:|:---:|:---:|
+| View own requests | ✓ | — | — |
+| View all requests | — | ✓ | ✓ |
+| Create request | ✓ | ✓ | ✓ |
+| Edit own New request (title/description) | ✓ | — | — |
+| Edit assigned non-terminal request | — | ✓ | — |
+| Edit any non-terminal request | — | — | ✓ |
+| Assign to self | — | ✓ | — |
+| Assign to any active staff | — | — | ✓ |
+| Change status (own, allowed transitions) | ✓ | ✓* | ✓ |
+| Edit category and priority | — | ✓* | ✓ |
+| View public comments | ✓ | ✓ | ✓ |
+| View internal notes | — | ✓ | ✓ |
+| Post public comment | ✓ | ✓ | ✓ |
+| Post internal note | — | ✓ | ✓ |
+| Manage categories (create/edit/deactivate) | — | — | ✓ |
+| View role-aware dashboard | ✓ | ✓ | ✓ |
+
+\* SupportAgent must be the current assignee of the request.
+
+---
+
+## Main features
+
+**Authentication** — JWT Bearer authentication with role claims. Signing key is validated at
+startup and never committed to source control.
+
+**Request lifecycle** — `New → InProgress → WaitingForUser / Resolved → Closed`; cancellation
+allowed from most states. Status transitions are enforced by a domain policy; the API rejects
+invalid transitions regardless of caller.
+
+**Assignments** — Employees have no assignment controls. Support Agents can self-assign or
+remove their own assignment. Admins can assign to any active staff member, reassign, or remove.
+Moving to InProgress requires an assignee.
+
+**Classification** — Category and priority are editable by staff on non-terminal requests.
+Category changes are restricted to active categories; request history references are preserved
+even after a category is deactivated.
+
+**Content editing** — Title and description are independently editable within role and status
+constraints. Both are normalized (trimmed) and no-op updates produce no history entry.
+
+**Audit history** — Every change produces a `RequestHistory` record containing the action,
+previous value, new value, actor, and timestamp. Description history stores summaries only
+(whitespace collapsed, capped at 120 characters); full descriptions are not recorded in history.
+
+**Comments and internal notes** — Threaded comments on every request. Internal notes are
+stored as a boolean flag and excluded from employee API responses at the query level.
+
+**Dashboard** — Role-aware summary statistics. Employees see their own counts. Staff see
+overall counts by status. Admins see additional agent-workload metrics.
+
+**Category administration** — Admins can create, edit, and deactivate categories. Deactivated
+categories are hidden from new-request creation but remain resolvable in history.
+
+---
+
+## Architecture
+
+The backend follows a layered architecture with strict boundaries:
 
 ```text
-service-request-system/
-├── ServiceRequestSystem.sln
-├── src/
-│   ├── ServiceRequest.Api/             ASP.NET Core Web API (controllers, Program.cs)
-│   ├── ServiceRequest.Application/     Application layer (feature logic, DI extensions)
-│   ├── ServiceRequest.Domain/          Domain entities, enums, rules
-│   └── ServiceRequest.Infrastructure/  EF Core, persistence, DI extensions
-├── tests/
-│   ├── ServiceRequest.UnitTests/       xUnit + Moq
-│   └── ServiceRequest.IntegrationTests/xUnit + WebApplicationFactory
-├── service-request-client/             Angular 18 application
-└── README.md
+ServiceRequest.Api              HTTP entry point — controllers, middleware, auth
+ServiceRequest.Application      Application services, DTOs, interfaces
+ServiceRequest.Domain           Entities, domain rules, enums, exceptions
+ServiceRequest.Infrastructure   EF Core, migrations, persistence, seeding
 ```
 
-The backend implements request-category management, service request creation,
-retrieval, assignment, status transitions, history, and comments (public and
-internal), plus a JWT-based authentication/authorization foundation (login,
-current-user endpoint, role policies). The Angular client implements the
-corresponding authentication foundation (login, session restoration, route
-guards, authenticated shell), a category management UI (view for all
-authenticated roles; create, edit, and activate/deactivate for Admin), and a
-service requests UI (list, create, details with content editing, assignment/status actions,
-history, and comments). Attachments, rich-text editing, version restoration, and deletion are not yet
-implemented.
+Key design choices:
 
-## Prerequisites
+- **Database-authoritative authorization** — role checks inside application services reload the
+  actor from the database rather than trusting only the JWT claim, so a deactivated user is
+  rejected even if they hold a valid token.
+- **Atomic history writes** — history records and their triggering mutations share a single
+  `SaveChangesAsync` call. A failed mutation never orphans a history row.
+- **ProblemDetails error responses** — all API errors return RFC 9457-compatible
+  `ProblemDetails` JSON; domain exceptions are mapped centrally in `DomainExceptionHandler`.
+- **No generic repository** — application services use `ApplicationDbContext` directly; a
+  repository layer is not introduced when EF Core already provides the abstraction.
+- **Domain invariants via methods** — `SupportRequest`, `ApplicationUser`, and `RequestCategory`
+  expose state-transition methods rather than public setters; invalid transitions throw typed
+  domain exceptions.
+- **Angular standalone components** — all Angular components use the standalone API with
+  explicit imports; no `NgModule`. State is managed locally with signals and RxJS without
+  NgRx or a global store.
+
+---
+
+## Technology stack
+
+**Backend**
+
+| | |
+|---|---|
+| Runtime | .NET 8 |
+| Web framework | ASP.NET Core 8 Web API (controllers) |
+| ORM | Entity Framework Core 8 (Code First, SQLite) |
+| Authentication | JWT Bearer via `Microsoft.AspNetCore.Authentication.JwtBearer` |
+| Password hashing | `Microsoft.AspNetCore.Identity.PasswordHasher<T>` (bcrypt-equivalent) |
+| API documentation | Swagger / Swashbuckle |
+
+**Frontend**
+
+| | |
+|---|---|
+| Framework | Angular 18 |
+| Language | TypeScript (strict mode) |
+| Styling | SCSS (component-scoped) |
+| State | Angular Signals + RxJS |
+
+**Testing**
+
+| | |
+|---|---|
+| Backend unit tests | xUnit + Moq |
+| Backend integration tests | xUnit + `WebApplicationFactory` + in-memory SQLite |
+| Frontend tests | Jasmine + Karma |
+
+---
+
+## Testing
+
+```
+Backend:  506 tests  (144 unit, 362 integration)
+Angular:  268 tests
+```
+
+**Unit tests** cover domain status-transition rules, assignment validation, content-update
+invariants, classification locking, and comment restrictions.
+
+**Integration tests** drive the full HTTP stack through `WebApplicationFactory`, using a
+per-test isolated SQLite database that is created, migrated, seeded, and deleted automatically.
+They verify endpoint routing, JWT authentication, role-based authorization policies (including
+resource-ownership checks), request validation, `ProblemDetails` error shapes, and complete
+request-lifecycle workflows.
+
+**Angular tests** cover API service methods (via `HttpTestingController`), route guards,
+the auth interceptor, form validation, role-conditional UI rendering, and loading / error / empty
+states for all major pages.
+
+Run all tests:
+
+```powershell
+# Backend
+dotnet test
+
+# Frontend (single run, no watch)
+cd service-request-client
+npx ng test --watch=false
+```
+
+---
+
+## Demo accounts
+
+> **Development only.** These credentials exist only in the local development database and must
+> never be used outside a developer's own machine.
+
+| Role | Username | Password |
+|---|---|---|
+| Admin | `admin` | `Admin123!` |
+| Support Agent | `agent` | `Agent123!` |
+| Support Agent (2) | `agent2` | `Agent2123!` |
+| Employee | `employee` | `Employee123!` |
+| Employee (2) | `employee2` | `Employee2123!` |
+
+All five accounts are seeded automatically on first startup. The seeder is idempotent; restarting
+the API does not create duplicates.
+
+---
+
+## Local setup
+
+### Prerequisites
 
 - .NET 8 SDK
-- Node.js 18+
+- Node.js 18 or newer
 - npm
-- Angular CLI 18 (`npx @angular/cli@18`)
 
-Verify versions:
+Verify:
 
 ```powershell
-dotnet --version
-node --version
+dotnet --version   # should be 8.x
+node --version     # should be 18.x or newer
 npm --version
-npx ng version
 ```
 
-## Backend
+### Configure the JWT signing key
 
-Restore and build:
-
-```powershell
-dotnet restore
-dotnet build
-```
-
-Run the API:
-
-```powershell
-dotnet run --project src/ServiceRequest.Api
-```
-
-Swagger UI is available at the API root in the Development environment.
-
-The Angular client is configured (see `src/environments/environment.development.ts`) to call
-the API at `http://localhost:5080`. If your `dotnet run` session uses a different port (check
-the console output or `Properties/launchSettings.json`), either update that file or run the API
-with an explicit override so the two agree:
-
-```powershell
-dotnet run --project src/ServiceRequest.Api --urls http://localhost:5080
-```
-
-### Cross-origin requests (CORS)
-
-The API and the Angular dev server run on different origins (different ports), and the API has
-no CORS policy configured beyond a small, explicit allowlist. `Cors:AllowedOrigins` in
-`appsettings.Development.json` allows only `http://localhost:4200` (the default `ng serve`
-origin) and does not use credentialed CORS. If you serve the Angular app from a different port,
-add that origin to the list — do not switch to `AllowAnyOrigin`.
-
-## Authentication (Development Only)
-
-The API uses JWT Bearer authentication. The signing key is **not** committed to
-source control — it must be configured locally via user secrets (or an
-environment variable) before the API will start.
-
-### Configure the local signing key
+The signing key is not committed to source control. Configure it via .NET user secrets:
 
 ```powershell
 dotnet user-secrets init --project src/ServiceRequest.Api
 
 dotnet user-secrets set `
   "Jwt:SigningKey" `
-  "<replace-with-a-random-string-at-least-32-characters-long>" `
+  "<replace-with-any-random-string-at-least-32-characters>" `
   --project src/ServiceRequest.Api
 ```
 
-Generate a random value yourself rather than reusing the placeholder above —
-for example, in PowerShell:
+Generate a value in PowerShell:
 
 ```powershell
 [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
 ```
 
-Alternatively, set the `Jwt__SigningKey` environment variable. If the signing
-key is missing or too short, the API fails to start with a clear validation
-error rather than starting insecurely.
+The API validates the key at startup and refuses to start if it is missing or too short.
 
-### Development user credentials
+### Start the API
 
-These accounts are seeded automatically the first time the API runs in the
-Development environment. **They are development-only credentials and must
-never be used, reused, or considered safe for any non-development
-environment.**
-
-| Role         | Username   | Password        |
-|--------------|------------|-----------------|
-| Admin        | `admin`    | `Admin123!`     |
-| Support Agent| `agent`    | `Agent123!`     |
-| Employee     | `employee` | `Employee123!`  |
-
-### Logging in
-
-```http
-POST /api/auth/login
-Content-Type: application/json
-
-{
-  "username": "employee",
-  "password": "Employee123!"
-}
+```powershell
+dotnet run --project src/ServiceRequest.Api --urls http://localhost:5080
 ```
 
-The response contains an `accessToken` (JWT), its `expiresAt` timestamp, and
-the current user's profile. Use `GET /api/auth/me` with the token to fetch the
-authenticated user's current database record.
+On first start, the API automatically:
 
-### Authorizing in Swagger
+1. Creates the SQLite database.
+2. Applies all EF Core migrations.
+3. Seeds five demo users, six categories (one inactive), 15 requests, comments, and history.
 
-1. Open Swagger UI (`/swagger`) while the API is running in Development.
-2. Call `POST /api/auth/login` with one of the credentials above and copy the
-   `accessToken` value from the response.
-3. Click the **Authorize** button at the top of the page.
-4. Enter `Bearer <accessToken>` (including the `Bearer ` prefix) and confirm.
-5. Subsequent requests from Swagger will include the token automatically.
+Swagger UI is available at `http://localhost:5080/swagger` while the API is running in
+Development mode.
 
-## Frontend
-
-Install dependencies:
+### Start the Angular client
 
 ```powershell
 cd service-request-client
 npm install
-```
-
-Run the development server:
-
-```powershell
 npm start
 ```
 
-Production build:
+Open `http://localhost:4200` and sign in with one of the demo accounts above.
 
-```powershell
-npm run build
+### Cross-origin notes
+
+The Angular dev server runs on `http://localhost:4200` and the API allows only that origin.
+If you change either port, update `Cors:AllowedOrigins` in `appsettings.Development.json` to
+match. Do not use `AllowAnyOrigin`.
+
+---
+
+## API documentation
+
+Swagger UI is served at `/swagger` in the Development environment. To authorize requests:
+
+1. Call `POST /api/auth/login` with a demo credential.
+2. Copy the `accessToken` from the response.
+3. Click **Authorize** at the top of the Swagger page.
+4. Enter `Bearer <accessToken>` (include the `Bearer ` prefix).
+
+Key endpoints:
+
+```
+POST   /api/auth/login
+GET    /api/auth/me
+
+GET    /api/requests                       (filtered, paginated)
+POST   /api/requests
+GET    /api/requests/{id}
+PATCH  /api/requests/{id}/status
+PATCH  /api/requests/{id}/assignment
+PATCH  /api/requests/{id}/classification
+PATCH  /api/requests/{id}/content
+GET    /api/requests/{id}/comments
+POST   /api/requests/{id}/comments
+GET    /api/requests/{id}/history
+
+GET    /api/categories
+POST   /api/categories
+PUT    /api/categories/{id}
+PATCH  /api/categories/{id}/active-state
+
+GET    /api/dashboard
+GET    /api/request-assignees
 ```
 
-### Signing in
+---
 
-With the API running (see above) and the Angular dev server started (`npm start`), open
-`http://localhost:4200/login` and sign in with one of the development accounts documented above
-(for example `employee` / `Employee123!`). A successful login redirects to `/dashboard`, which
-shows the signed-in user's display name and role; `Categories` and `Requests` are reachable
-from the top navigation. The **Log out** button in the header clears the session and returns
-to `/login`.
-Visiting a protected route while signed out redirects to `/login` and returns you to the page
-you asked for once you sign in.
+## Project structure
 
-### Categories
-
-The Categories page (`/categories`) is available to every authenticated role:
-
-- **Employee** and **SupportAgent** get a read-only view of active categories — no create, edit,
-  activate/deactivate, or "show inactive" controls are rendered for these roles.
-- **Admin** can additionally create categories, edit a category's name and description, toggle
-  whether inactive categories are included in the list, and deactivate or reactivate a category
-  (deactivation asks for inline confirmation first, since it affects future request creation).
-
-The Angular UI hides Admin-only controls for other roles purely for a clearer user experience —
-the API independently enforces the `RequireAdmin` policy on every write endpoint (`POST`, `PUT`,
-`PATCH /active-state`), so the frontend role check is not a security boundary. Category deletion
-is intentionally not implemented; categories are deactivated instead of removed so that request
-history referencing them remains meaningful.
-
-### Service requests
-
-The Requests section (`/requests`, `/requests/new`, `/requests/:requestId`) is available to
-every authenticated role, with the visible scope determined entirely by the backend:
-
-- **Employee**: the list ("My requests") and details pages only ever show requests the
-  employee created; requesting another user's request by ID returns the same "not found"
-  response as a request that does not exist, so the UI cannot distinguish "missing" from
-  "not yours".
-- **SupportAgent** and **Admin**: the list ("All requests") and details pages show every
-  request regardless of creator.
-- All three roles can create a request for themselves — the creator, status (`New`), and
-  assignee (`Unassigned`) are always set by the server and can never be supplied by the
-  client.
-
-This is enforced server-side (`GET /api/requests`, `GET /api/requests/{id}`,
-`POST /api/requests`), not just hidden in the UI. Category selection when creating a request
-is restricted to active categories only.
-
-### Assignment and status management
-
-A request's details page also supports assignment and status changes, both enforced by the
-backend regardless of what the UI shows:
-
-**Assignment** (`PATCH /api/requests/{id}/assignment`, admin-only assignee list at
-`GET /api/request-assignees`):
-
-- **Employee**: no assignment controls; assignment is not visible as an action.
-- **SupportAgent**: can assign an unassigned request to themselves, and remove their own
-  assignment. Cannot assign to anyone else, and cannot take over or remove a request already
-  assigned to a different agent.
-- **Admin**: can assign an unassigned or already-assigned request to any active
-  `SupportAgent` or `Admin`, reassign between them, or remove any assignment. Cannot assign to
-  an `Employee` or an inactive user.
-- Assigning to the current assignee, or removing an assignment that is already absent, is a
-  no-op — it succeeds without creating a duplicate history entry.
-- A closed or cancelled request can no longer be assigned or reassigned.
-
-**Status transitions** (`PATCH /api/requests/{id}/status`) follow one transition policy for
-every role (`New → InProgress/Cancelled`, `InProgress → WaitingForUser/Resolved/Cancelled`,
-`WaitingForUser → InProgress/Resolved/Cancelled`, `Resolved → InProgress/Closed`; `Closed` and
-`Cancelled` are terminal). On top of that shared policy:
-
-- **Employee**: can cancel their own request from `New`, `InProgress`, or `WaitingForUser`,
-  and can close their own request only once it is `Resolved`. Cannot set any other status.
-- **SupportAgent**: can move a request they are currently assigned to through `InProgress`,
-  `WaitingForUser`, `Resolved`, and `Cancelled` (including reopening `Resolved` back to
-  `InProgress`). Cannot change a request that is unassigned or assigned to a different agent,
-  and cannot close a request.
-- **Admin**: can perform any transition the shared policy allows, without needing to be the
-  assignee.
-- Moving a request into `InProgress` requires it to already have an assignee — nothing is
-  auto-assigned as a side effect of a status change.
-- Setting a request to its current status is a no-op (no duplicate history entry).
-
-### Request content editing
-
-The details page supports title and description updates through
-`PATCH /api/requests/{id}/content`. Both fields are required on every update; this is not a
-partial patch. The backend trims both values, requires title length 3-200 characters and
-description length 1-4000 characters, and treats repeated identical normalized updates as
-no-ops.
-
-- **Employee**: can edit only their own `New` requests. Their own requests in any later status
-  are locked, and another user's request remains hidden as not found.
-- **SupportAgent**: can edit only requests assigned to them while the request is not `Closed` or
-  `Cancelled`.
-- **Admin**: can edit any non-terminal request without being assigned.
-- `Closed` and `Cancelled` requests are read-only for all roles.
-
-Only title and description are editable here. Category, priority, status, assignment, creator,
-attachments, rich text, and version restoration are intentionally outside this endpoint.
-
-### Request history
-
-Every actual assignment change, status change, classification change, title change, and
-description change is recorded (`GET /api/requests/{id}/history`) with the acting user and a
-timestamp. Title history stores the full normalized old and new title. Description history stores
-audit-safe summaries only: whitespace is collapsed and values longer than 120 characters are
-truncated with an ellipsis, so full long descriptions are not exposed in history. Idempotent
-no-op calls do not create history entries. History and its triggering mutation are written in the
-same database operation, so a failed mutation never leaves behind an orphaned history row.
-
-### Comments
-
-A request's details page includes a comment thread and a comment form
-(`GET /api/requests/{id}/comments`, `POST /api/requests/{id}/comments`), with
-visibility and authoring rights enforced entirely by the backend:
-
-- **Employee**: can view and add only public comments on their own requests.
-  Requesting comments on another user's request returns the same "not found"
-  response as a request that does not exist. Attempting to submit an internal
-  comment returns 403 Forbidden.
-- **SupportAgent** and **Admin**: can view both public and internal comments on
-  any request, and can submit comments of either type.
-- Internal comments are always excluded from the response body when the caller
-  is an Employee — they are never returned, not just hidden.
-- A closed or cancelled request's existing comments remain viewable, but adding
-  a new comment returns 409 Conflict.
-
-Editing and deleting comments are not implemented.
-
-### Session storage decision
-
-The access token returned by `POST /api/auth/login` is stored in the browser's
-`sessionStorage`, behind a single service (`AuthStorageService` — no other code touches
-`sessionStorage` directly). `localStorage` is not used, and the token is never persisted
-outside the current tab/session.
-
-**This is not a secure-by-default design.** `sessionStorage` is readable by any JavaScript
-running on the page, so it offers no protection against XSS — a script-injection
-vulnerability elsewhere in the app could read the token directly. It was chosen here only
-because the current backend returns the token in the JSON response body rather than an
-`HttpOnly` cookie, and no such cookie-based flow exists yet. The preferred production design
-is an `HttpOnly`, `Secure`, `SameSite` cookie issued by the server, combined with CSRF
-protection — the backend would need to change to support that. Do not treat the current
-`sessionStorage` approach as adequate for a production deployment without revisiting this.
-
-## Tests
-
-Backend (all projects):
-
-```powershell
-dotnet test
+```text
+service-request-system/
+├── ServiceRequestSystem.sln
+├── src/
+│   ├── ServiceRequest.Api/
+│   │   ├── Controllers/          HTTP controllers
+│   │   ├── Authentication/       JWT setup and extensions
+│   │   ├── ExceptionHandling/    Centralized ProblemDetails mapping
+│   │   └── Program.cs
+│   ├── ServiceRequest.Application/
+│   │   ├── Requests/             Feature: DTOs, interfaces, queries
+│   │   ├── Categories/
+│   │   ├── Dashboard/
+│   │   └── Authentication/
+│   ├── ServiceRequest.Domain/
+│   │   ├── Entities/             SupportRequest, ApplicationUser, RequestCategory,
+│   │   │                          RequestComment, RequestHistory
+│   │   ├── Enums/                RequestStatus, RequestPriority, UserRole
+│   │   ├── Rules/                RequestStatusTransitions
+│   │   └── Exceptions/           Typed domain exceptions
+│   └── ServiceRequest.Infrastructure/
+│       ├── Data/                 ApplicationDbContext, EF configurations
+│       ├── Migrations/
+│       ├── Seed/                 DevelopmentUserSeeder, DevelopmentDataSeeder
+│       ├── Requests/             RequestService
+│       ├── Categories/           RequestCategoryService
+│       └── Dashboard/            DashboardService
+├── tests/
+│   ├── ServiceRequest.UnitTests/
+│   └── ServiceRequest.IntegrationTests/
+└── service-request-client/           Angular 18 application
+    └── src/app/
+        ├── core/                     Auth, guards, interceptors, shell
+        ├── shared/                   Reusable components and models
+        └── features/
+            ├── authentication/       Login page
+            ├── dashboard/            Role-aware stats
+            ├── requests/             List, create, details
+            └── categories/           Category management
 ```
 
-Backend unit tests only:
+---
 
-```powershell
-dotnet test tests/ServiceRequest.UnitTests
-```
+## Known limitations
 
-Backend integration tests only:
+These are intentional scope choices for a portfolio project, not oversights:
 
-```powershell
-dotnet test tests/ServiceRequest.IntegrationTests
-```
+- **SQLite only** — fine for local development; production would use PostgreSQL or SQL Server.
+- **No file attachments** — requests are text-only.
+- **No notifications** — there is no email, push, or in-app notification system.
+- **No password recovery** — only login and the current-user endpoint are implemented.
+- **No real-time updates** — the UI does not use WebSockets or SSE; a page reload is required
+  to see changes made by other users.
+- **No comment editing or deletion** — comments are append-only.
+- **Token in sessionStorage** — the JWT is stored in `sessionStorage` rather than an `HttpOnly`
+  cookie. This is not XSS-resistant and is documented explicitly in the codebase. A production
+  deployment should issue the token as a `Secure`, `HttpOnly`, `SameSite` cookie instead.
+- **No production deployment configuration** — no Docker, reverse proxy, or CI/CD pipeline is
+  included; the project targets local development only.
 
-Frontend (single run, no watch):
+---
 
-```powershell
-cd service-request-client
-npx ng test --watch=false
-```
+## Future production improvements
 
-## Known Limitations
-
-- Registration, refresh tokens, token renewal, password reset, email
-  verification, and user-management CRUD are not implemented — only login
-  and the current-user endpoint exist.
-- Requests support creation, viewing, title/description content editing, assignment,
-  status transitions, comments, and history. There are no attachments, rich-text
-  editing, version restoration, or deletion.
-- The Angular client implements login, session restoration, route guards,
-  a minimal authenticated shell (Dashboard, Categories, Requests), category
-  management (view for all roles; create/edit/activate/deactivate for
-  Admin), and service requests (list with filters/pagination, create,
-  details with content editing, assignment/status actions and history — view for all roles,
-  scoped to own requests for Employee).
-  There is no category search, sorting, pagination, or deletion — the list
-  is expected to stay small, and deactivation is used instead of deletion
-  so category history is preserved. Request search and sorting controls are
-  also not implemented.
-- The access token is stored in `sessionStorage`, which is readable by any
-  JavaScript on the page (see "Session storage decision" above). There is no
-  refresh token, so a session simply ends when the token expires or the tab
-  closes.
-- CORS is restricted to `http://localhost:4200` for local development only;
-  a real deployment topology (and its allowed origins) has not been decided.
-- Development seed users and their passwords (documented above) are for local
-  development only and must never be used outside a developer's own machine.
+- **PostgreSQL or SQL Server** — replace SQLite with a production-grade database.
+- **HttpOnly cookie authentication** — move the JWT from `sessionStorage` to a server-issued
+  `HttpOnly` cookie with CSRF protection.
+- **Refresh-token strategy** — complement short-lived access tokens with refresh tokens stored
+  securely.
+- **Docker** — containerize API, Angular build, and database for reproducible deployment.
+- **CI/CD pipeline** — automated build, test, and deploy on pull requests and merges.
+- **Observability** — structured logging with correlation IDs, distributed tracing, and health
+  endpoints.
+- **File attachments** — object storage (S3-compatible) for request attachments.
+- **Email notifications** — notify employees and agents on status changes and comment activity.
+- **Production secret management** — Azure Key Vault, AWS Secrets Manager, or similar.

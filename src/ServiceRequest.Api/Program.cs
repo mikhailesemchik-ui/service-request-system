@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using ServiceRequest.Api.Authentication;
 using ServiceRequest.Api.ExceptionHandling;
 using ServiceRequest.Api.Extensions;
@@ -39,8 +40,11 @@ if (app.Environment.IsDevelopment())
 
     using var seedScope = app.Services.CreateScope();
     var dbContext = seedScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await dbContext.Database.MigrateAsync();
+
     var passwordHasher = seedScope.ServiceProvider.GetRequiredService<IPasswordHasher<ApplicationUser>>();
     await DevelopmentUserSeeder.SeedAsync(dbContext, passwordHasher);
+    await DevelopmentDataSeeder.SeedAsync(dbContext);
 }
 
 app.UseHttpsRedirection();
