@@ -24,16 +24,30 @@ backend authorization, a complete request lifecycle, and automated testing acros
 ## Screenshots
 
 > Screenshots are captured against the seeded development database.
-> See [`docs/screenshots/CAPTURE.md`](docs/screenshots/CAPTURE.md) for the manual capture checklist.
 
-| View | Path |
-|---|---|
-| Login page | `docs/screenshots/login.png` |
-| Admin dashboard | `docs/screenshots/dashboard-admin.png` |
-| Employee dashboard | `docs/screenshots/dashboard-employee.png` |
-| Request list with filters | `docs/screenshots/requests-list.png` |
-| Request details & management | `docs/screenshots/request-details.png` |
-| Comments with internal note | `docs/screenshots/comments-history.png` |
+**Login**
+
+![Login page](docs/screenshots/login.png)
+
+**Admin dashboard — full overview with agent workload and status breakdown**
+
+![Admin dashboard](docs/screenshots/dashboard-admin.png)
+
+**Request list — admin view showing all 15 seeded requests with filters**
+
+![Request list](docs/screenshots/requests-list.png)
+
+**Request details — admin view with management controls**
+
+![Request details](docs/screenshots/request-details.png)
+
+**Comments and history — agent view showing internal note and audit trail**
+
+![Comments and history](docs/screenshots/comments-history.png)
+
+**Employee dashboard — scoped to the signed-in employee's own requests**
+
+![Employee dashboard](docs/screenshots/dashboard-employee.png)
 
 ---
 

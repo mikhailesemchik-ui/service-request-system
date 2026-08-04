@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard, guestGuard } from './core/auth/auth.guard';
+import { roleGuard } from './core/auth/role.guard';
 import { AppShellComponent } from './core/layout/app-shell.component';
 
 export const routes: Routes = [
@@ -25,6 +26,8 @@ export const routes: Routes = [
       {
         path: 'categories',
         title: 'Categories',
+        canActivate: [roleGuard],
+        data: { roles: ['Admin'] },
         loadComponent: () =>
           import('./features/categories/pages/categories.page').then((m) => m.CategoriesPageComponent),
       },

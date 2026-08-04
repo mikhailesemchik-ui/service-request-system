@@ -1,19 +1,23 @@
 <div class="app-shell">
   <header class="app-shell__header">
-    <span class="app-shell__title">Service Request System</span>
+    <div class="app-shell__header-inner">
+      <span class="app-shell__title">Service Request System</span>
 
-    <nav class="app-shell__nav">
-      <a routerLink="/dashboard" routerLinkActive="is-active">Dashboard</a>
-      <a routerLink="/categories" routerLinkActive="is-active">Categories</a>
-      <a routerLink="/requests" routerLinkActive="is-active">Requests</a>
-    </nav>
+      <nav class="app-shell__nav">
+        <a routerLink="/dashboard" routerLinkActive="is-active">Dashboard</a>
+        @if (authService.hasRole('Admin')) {
+          <a routerLink="/categories" routerLinkActive="is-active">Categories</a>
+        }
+        <a routerLink="/requests" routerLinkActive="is-active">Requests</a>
+      </nav>
 
-    <div class="app-shell__user">
-      @if (authService.currentUser(); as user) {
-        <span class="app-shell__user-name">{{ user.displayName }}</span>
-        <span class="app-shell__user-role">{{ user.role }}</span>
-      }
-      <button type="button" (click)="logout()">Log out</button>
+      <div class="app-shell__user">
+        @if (authService.currentUser(); as user) {
+          <span class="app-shell__user-name">{{ user.displayName }}</span>
+          <span class="app-shell__user-role">{{ user.role }}</span>
+        }
+        <button type="button" (click)="logout()">Log out</button>
+      </div>
     </div>
   </header>
 
