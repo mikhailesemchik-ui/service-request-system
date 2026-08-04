@@ -16,7 +16,7 @@ backend authorization, a complete request lifecycle, and automated testing acros
   employee callers, enforced at the API level on every response.
 - **Layered architecture** — a Domain/Application/Infrastructure/API split keeps business rules
   decoupled from persistence, tested independently, and easy to follow.
-- **506 backend tests / 268 Angular tests** — domain-rule unit tests, real-database integration
+- **506 backend tests / 273 Angular tests** — domain-rule unit tests, real-database integration
   tests through the full HTTP stack, and Angular component and service tests.
 
 ---
@@ -152,7 +152,7 @@ Key design choices:
 | Web framework | ASP.NET Core 8 Web API (controllers) |
 | ORM | Entity Framework Core 8 (Code First, SQLite) |
 | Authentication | JWT Bearer via `Microsoft.AspNetCore.Authentication.JwtBearer` |
-| Password hashing | `Microsoft.AspNetCore.Identity.PasswordHasher<T>` (bcrypt-equivalent) |
+| Password hashing | ASP.NET Core Identity `PasswordHasher<T>` (PBKDF2-based) |
 | API documentation | Swagger / Swashbuckle |
 
 **Frontend**
@@ -178,7 +178,7 @@ Key design choices:
 
 ```
 Backend:  506 tests  (144 unit, 362 integration)
-Angular:  268 tests
+Angular:  273 tests
 ```
 
 **Unit tests** cover domain status-transition rules, assignment validation, content-update
@@ -326,7 +326,7 @@ POST   /api/categories
 PUT    /api/categories/{id}
 PATCH  /api/categories/{id}/active-state
 
-GET    /api/dashboard
+GET    /api/dashboard/summary
 GET    /api/request-assignees
 ```
 
